@@ -96,7 +96,9 @@ async function apiRequest(endpoint, options = {}) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const error = new Error(data.message || data.detail || `Request failed with status ${response.status}`);
+      const detail = typeof data.detail === 'string' ? data.detail :
+        Array.isArray(data.detail) ? data.detail.map(item => item.msg).join('; ') : null;
+      const error = new Error(data.message || detail || `Request failed with status ${response.status}`);
       error.status = response.status;
       error.code = data.code || 'error';
       error.requestId = data.request_id || response.headers.get('X-Request-ID');
