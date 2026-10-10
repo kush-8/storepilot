@@ -5,8 +5,8 @@ import json
 from collections import Counter
 from datetime import datetime, timedelta
 
-from app.copilot import sanitize
 from app.models import Filters
+from app.services.messages import sanitize
 from app.storage import ANCHOR, directory, fail, now, source, state
 
 

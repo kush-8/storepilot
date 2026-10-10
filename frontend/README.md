@@ -1,16 +1,20 @@
-# React + Vite
+# StorePilot frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React with Vite, plain CSS, Lucide icons and Recharts. The current application uses JavaScript/JSX.
+Login calls the backend with a demo fallback; Copilot, dashboard and other demo views still use
+local mock data. Connecting these views to the verified backend remains outstanding.
 
-Currently, two official plugins are available:
+```powershell
+npm ci
+npm run dev
+npm run lint
+npm run build
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Vite runs on port 5173 and proxies `/api` to the FastAPI server at `127.0.0.1:8000`.
+Keep API credentials and database files in the backend. The npm lockfile is checked in;
+unused Vite starter assets and a duplicate lockfile backup have been removed.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+See the [frontend design](../docs/FRONTEND_DESIGN.md),
+[API/workflow report](../docs/COPILOT_WORKFLOW_AND_TESTS.md) and
+[browser test plan](tests/README.md). Passing lint/build does not prove backend-connected UI journeys.

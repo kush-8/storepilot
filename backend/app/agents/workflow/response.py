@@ -1,12 +1,26 @@
 """Merge policy citations and factual evidence without inventing a synthesis."""
 
+from ..guardrails import PIIAgent, SafetyAgent
 from .input import sanitize_text
 from .schemas import WorkflowResult, WorkflowState
 
 
 def compose_result(state: WorkflowState) -> WorkflowResult:
     triage, routing = state.get("triage_result"), state.get("route_decision")
-    common = {"triage": triage, "routing": routing}
+    safety = state.get("safety_result")
+    common = {
+        "triage": triage,
+        "routing": routing,
+        "pii_detected": bool(state.get("pii_result") and state["pii_result"].pii_detected),
+    }
+    if safety and not safety.allowed:
+        return WorkflowResult(
+            status="refused",
+            answer=safety.safe_response,
+            human_review_required=True,
+            safety_refusal=True,
+            **common,
+        )
     if state.get("error"):
         return WorkflowResult(
             status="unavailable", answer=state["error"], human_review_required=True, **common
@@ -20,6 +34,14 @@ def compose_result(state: WorkflowState) -> WorkflowResult:
             **common,
         )
     if routing.route == "clarify":
+        pii = PIIAgent().sanitize(routing.follow_up)
+        if not SafetyAgent().evaluate(pii).allowed:
+            return WorkflowResult(
+                status="unavailable",
+                answer="The follow-up failed safety validation. Please seek human review.",
+                human_review_required=True,
+                **common,
+            )
         return WorkflowResult(
             status="needs_clarification",
             answer=sanitize_text(routing.follow_up),
@@ -56,6 +78,39 @@ def compose_result(state: WorkflowState) -> WorkflowResult:
         )
         if part
     )
+    clean = PIIAgent().sanitize(answer)
+    if not SafetyAgent().evaluate(clean).allowed:
+        return WorkflowResult(
+            status="unavailable",
+            answer="The generated guidance failed safety validation. Please seek human review.",
+            human_review_required=True,
+            **common,
+        )
+    if safety and safety.safe_response:
+        answer = safety.safe_response + "\n\n" + answer
+    # Sanitize structured evidence and model text as well as the displayed answer.
+    if rag:
+        rag = rag.model_copy(update={"answer": sanitize_text(rag.answer)})
+    if data:
+        data = data.model_copy(
+            update={
+                "summary": sanitize_text(data.summary),
+                "evidence": [
+                    item.model_copy(
+                        update={
+                            "rows": [
+                                {
+                                    key: sanitize_text(value) if isinstance(value, str) else value
+                                    for key, value in row.items()
+                                }
+                                for row in item.rows
+                            ]
+                        }
+                    )
+                    for item in data.evidence
+                ],
+            }
+        )
     return WorkflowResult(
         status=status,
         answer=sanitize_text(answer),
@@ -64,6 +119,6 @@ def compose_result(state: WorkflowState) -> WorkflowResult:
         human_review_required=triage.priority == "P1"
         or triage.confidence < 0.6
         or status != "answered",
-        limitations=limitations,
+        limitations=[sanitize_text(value) for value in limitations],
         **common,
     )

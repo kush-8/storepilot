@@ -11,8 +11,8 @@ from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
 
 from app.agents.data.agent import DataAgent
-from app.agents.data.repository import RetailRepository
 from app.agents.data.schemas import DataResult
+from app.agents.data.sql_tool import ReadOnlySqlExecutor
 from app.agents.rag.config import BACKEND_ROOT
 from app.agents.rag.schemas import RagResult
 from app.agents.router.agent import RouterAgent
@@ -24,6 +24,44 @@ from app.agents.workflow.nodes import WorkflowNodes
 from app.agents.workflow.service import RetailWorkflow
 
 ANCHOR = datetime.fromisoformat("2026-10-10T12:00:00+05:30")
+
+
+def data_agent(path, row_limit=50):
+    def plan(prompt):
+        import json
+
+        text = prompt.to_messages()[-1].content
+        queries = json.loads(text.split("Router evidence types: ")[1].splitlines()[0])
+        entities = json.loads(text.split("Entities JSON: ")[1].splitlines()[0])
+        tables = {
+            "product": "product_master",
+            "store": "store_master",
+            "vendor": "vendor_master",
+            "returns": "returns_quality",
+        }
+        sql = {
+            "inventory": "SELECT store_id, sku, on_hand FROM inventory WHERE 1=1"
+            + (" AND store_id=:store_id" if entities.get("store_id") else "")
+            + (" AND sku=:sku" if entities.get("sku") else "")
+            + " ORDER BY sku",
+            "case_summary": "SELECT COUNT(created_ts) AS case_count FROM visible_support_cases",
+            "receipts": "SELECT receipt_id, received_qty FROM receipts",
+        }
+        for name, table in tables.items():
+            column = {
+                "product": "sku",
+                "store": "store_id",
+                "vendor": "vendor_id",
+                "returns": "return_id",
+            }[name]
+            sql[name] = f"SELECT {column} FROM {table} ORDER BY {column}"
+        return {"queries": [{"evidence_type": name, "sql": sql[name]} for name in queries]}
+
+    return DataAgent(RunnableLambda(plan), ReadOnlySqlExecutor(path, row_limit), ANCHOR)
+
+
+def run_data(agent, plan, entities, viewer=None):
+    return agent.invoke("Inventory evidence", plan, triage(entities=entities), viewer)
 
 
 def triage(**updates):
@@ -78,7 +116,7 @@ def test_single_graph_routes_only_selected_agents_and_joins_once(route, expected
         )
     )
     names = [name for event in events for name in event]
-    assert names[:2] == ["triage_agent", "router_agent"]
+    assert names[:4] == ["pii_agent", "safety_agent", "triage_agent", "router_agent"]
     assert names.count("compose") == 1
     assert (spies[2].call_count, spies[3].invoke.call_count) == expected
     result = events[-1]["compose"]["result"]
@@ -87,7 +125,7 @@ def test_single_graph_routes_only_selected_agents_and_joins_once(route, expected
     assert bool(result.data) == bool(expected[1])
     assert "What is the inventory" in spies[1].call_args.args[0].to_messages()[-1].content
     if expected[1]:
-        assert spies[3].invoke.call_args.args[2] == "E001"
+        assert spies[3].invoke.call_args.args[3] == "E001"
 
 
 @pytest.mark.parametrize(
@@ -260,7 +298,8 @@ def database(tmp_path):
 )
 def test_registered_data_queries_return_real_read_only_evidence(database, query):
     before = hashlib.sha256(database.read_bytes()).hexdigest()
-    result = DataAgent(RetailRepository(database, ANCHOR)).invoke(
+    result = run_data(
+        data_agent(database),
         RouteDecision(route="data", reason="test", queries=[query]),
         Entities(store_id="ST001", sku="SKU1001", vendor_id="V001"),
     )
@@ -271,7 +310,8 @@ def test_registered_data_queries_return_real_read_only_evidence(database, query)
 
 @pytest.mark.parametrize("level", [1, 2, 3, 4])
 def test_case_counts_use_current_employee_levels_and_time_boundaries(database, level):
-    result = DataAgent(RetailRepository(database, ANCHOR, row_limit=1)).invoke(
+    result = run_data(
+        data_agent(database, row_limit=1),
         RouteDecision(route="data", reason="test", queries=["case_summary"], lookback_days=1),
         Entities(),
         f"E00{level}",
@@ -282,17 +322,18 @@ def test_case_counts_use_current_employee_levels_and_time_boundaries(database, l
 
 
 def test_case_authorization_is_refreshed_when_employee_level_changes(database):
-    agent = DataAgent(RetailRepository(database, ANCHOR))
+    agent = data_agent(database)
     plan = RouteDecision(route="data", reason="test", queries=["case_summary"], lookback_days=1)
-    assert agent.invoke(plan, Entities(), "E004").evidence[0].rows[0]["case_count"] == 4
+    assert run_data(agent, plan, Entities(), "E004").evidence[0].rows[0]["case_count"] == 4
     with sqlite3.connect(database) as c:
         c.execute("UPDATE employee_master SET escalation_level=1 WHERE employee_id='E004'")
-    assert agent.invoke(plan, Entities(), "E004").evidence[0].rows[0]["case_count"] == 2
+    assert run_data(agent, plan, Entities(), "E004").evidence[0].rows[0]["case_count"] == 2
 
 
 @pytest.mark.parametrize("viewer", [None, "NOT_FOUND"])
 def test_case_data_denies_unknown_caller(database, viewer):
-    result = DataAgent(RetailRepository(database, ANCHOR)).invoke(
+    result = run_data(
+        data_agent(database),
         RouteDecision(route="data", reason="test", queries=["case_summary"]),
         Entities(),
         viewer,
@@ -302,18 +343,19 @@ def test_case_data_denies_unknown_caller(database, viewer):
 
 
 def test_missing_filters_missing_rows_and_row_caps_are_distinct(database):
-    agent = DataAgent(RetailRepository(database, ANCHOR, row_limit=1))
+    agent = data_agent(database, row_limit=1)
     plan = RouteDecision(route="data", reason="test", queries=["inventory"])
-    assert agent.invoke(plan, Entities()).status == "needs_clarification"
-    assert agent.invoke(plan, Entities(sku="NOT_FOUND")).status == "no_data"
-    capped = agent.invoke(plan, Entities(store_id="ST001"))
+    assert run_data(agent, plan, Entities()).status == "needs_clarification"
+    assert run_data(agent, plan, Entities(sku="NOT_FOUND")).status == "no_data"
+    capped = run_data(agent, plan, Entities(store_id="ST001"))
     assert len(capped.evidence[0].rows) == 1
     assert capped.evidence[0].truncated
 
 
 def test_missing_database_is_not_created(tmp_path):
     path = tmp_path / "missing.db"
-    result = DataAgent(RetailRepository(path, ANCHOR)).invoke(
+    result = run_data(
+        data_agent(path),
         RouteDecision(route="data", reason="test", queries=["inventory"]),
         Entities(store_id="ST001"),
     )

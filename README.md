@@ -1,114 +1,94 @@
 # StorePilot
 
-Planning documents and two independent application codebases for the HCLTech hackathon.
+Retail issue reporting and ticket analytics, with separate React/Vite and Python/uv/FastAPI codebases.
+The backend connects PII and Safety guardrails, Triage, Router, policy RAG and a shared
+Data/Analytics agent through LangGraph. Chroma holds policy vectors; SQLite holds operational
+source data and durable application records. Docker packaging remains planned.
 
-Agreed target stack: React/Vite frontend; Python/uv/FastAPI backend; LangGraph orchestration; Chroma policy vector retrieval; SQLite retail data; Docker Compose packaging. RAG dependencies are installed and locked; container configuration awaits implementation.
+## Current state
 
-Standalone RAG is now implemented using LangChain, LangGraph, Groq, and ChromaDB. See
-[RAG setup and usage](backend/app/agents/rag/README.md). It has a Python interface
-and CLI; no API endpoint is connected to it. Container configuration and the
-remaining application features are still planned.
+- Backend: all 16 contracted operations, JWT sessions, private conversations, validated drafts,
+  transactional ticket creation, lifecycle events, current-level visibility and dashboard analytics.
+- Frontend: React screens and a Vite API proxy exist; login uses the API with a demo fallback.
+  Copilot and dashboard views still use local mock services and need backend integration.
+- Operational source: `backend/database/retail.db`, nine tables and 2,970 rows. The removed
+  operational CSVs are no longer required. Source queries are read-only.
+- Application state: separate `backend/database/storepilot.db`, initialized by the backend.
+- Verification: **282 backend tests pass** and Ruff passes. Live model answer quality awaits
+  `GROQ_API_KEY`; backend evaluation and container deployment remain unfinished.
 
-The [standalone multi-agent workflow](backend/app/agents/workflow/README.md) now
-runs triage, router, policy RAG, and a read-only data agent in one LangGraph entry
-point, including parallel RAG/data execution when both are needed. It has no API
-connection and does not create tickets.
+The intended UI has Dashboard with integrated Analytics and a chat Copilot for follow-ups,
+recommended steps and explicit ticket saving. Ticket reads require the creator's current numeric
+escalation level to be less than or equal to the viewer's current level. Conversations and drafts
+remain private. Evaluation has no frontend page or public API endpoint.
 
-## Current implementation
-
-- `frontend/`: React + TypeScript starter generated with Vite; product screens are not implemented.
-- `backend/`: Python + uv + FastAPI; read-only health and dashboard endpoints.
-- `backend/database/retail.db`: SQLite database containing all 2,970 source rows from the nine retail CSVs.
-- `backend/scripts/`: atomic CSV import and full source-to-database verification.
-- `backend/knowledge_base/`: supplied policy documents; original guides refer to their package location as `knowledge_base/`.
-- `docs/`: product requirements, app flow, technology decisions, engineering requirements, system design, and frontend design.
-
-Target product: Dashboard combines ticket overview and Analytics; Copilot is a chatbot for reporting issues, asking follow-ups, recommending steps, and generating persistent tickets. Ticket access uses creator current level <= viewer current level. Requested login validates Employee ID + Store ID and issues JWT. Evaluation is backend-only.
-
-Login/JWT, employee authorization, product screens, the remaining agents, writable ticket storage, Analytics, and the evaluation runner are specified but not implemented. Standalone RAG and its offline tests are implemented. The existing starter dashboard is unscoped and does not implement the revised employee-access contract.
-
-## Directory layout
+## Layout
 
 ```text
-frontend/                  React/Vite scaffold
-backend/                   FastAPI scaffold, database, scripts, policies, tests
-data/                      Original business CSVs
-evaluation/                Backend evaluation inputs
-docs/                      Product, design, API, and test planning documents
-.tools/                    Local uv executable used on this workstation
-Participant_Guide.md       Original challenge guide
-Student_Printable_Guide.*  Original printable HTML/PDF guides
+frontend/                  React/Vite UI, npm lockfile and browser test package
+backend/app/               FastAPI, storage/services and independent agent modules
+backend/database/          Operational snapshot and writable application database
+backend/scripts/           SQLite verification and Postman collection generation
+backend/knowledge_base/    Policy Markdown sources
+backend/evaluation/        Retained evaluation cases and submission schema
+backend/tests/             Offline workflow, RAG, guardrail, API, auth and contract tests
+docs/                      Product, design, flow, contract and verification documents
+.tools/                    Ignored workstation-local uv executable
 ```
-
-Download caches and obsolete root script bytecode have been removed. The backend virtual environment and local uv tool are retained. Source datasets, guides, policy files, database, and application scaffolds are preserved.
 
 ## Documents
 
 | Document | Purpose |
-|---|---|
-| [Product requirements](docs/PRD.md) | Users, scope, must-have features, acceptance criteria, metrics, and deliverables |
-| [App flow](docs/APP_FLOW.md) | Navigation, triage/analytics journeys, escalation, and failure states |
-| [Technology stack](docs/TECH_STACK.md) | React/Vite and Python/uv/FastAPI decisions, dependencies, and local setup |
-| [Engineering requirements](docs/REQUIREMENTS.md) | API contracts, safety rules, data access, evaluation, and implementation checklist |
-| [System design](docs/SYSTEM_DESIGN.md) | Agent orchestration, retrieval, SQL schema, query examples, and trust boundaries |
-| [Frontend design](docs/FRONTEND_DESIGN.md) | Screen layouts, reusable components, visual tokens, interaction, and accessibility |
-| [Ticket data model](docs/TICKET_DATA_MODEL.md) | Durable tickets, private chat/drafts, evidence, events, JWT metadata, and transaction boundaries |
-| [OpenAPI contract](backend/openapi.json) | Proposed 16-operation API with schemas, JWT protection, errors, and scope rules |
-| [OpenAPI summary](docs/API_CONTRACT.md) | Plain-English endpoints, login, chat-to-ticket, dashboard Analytics and contract notes |
-| [Automated test design](docs/AUTOMATED_TEST_DESIGN.md) | Planned rule, database/API, contract, frontend, deployment, and RAG evaluation suites |
-| [Data analysis](docs/DATA_ANALYSIS.md) | Findings and limitations across all supplied retail datasets |
+| --- | --- |
+| [Product requirements](docs/PRD.md) | Product scope and acceptance criteria |
+| [App flow](docs/APP_FLOW.md) | Intended navigation and employee journeys |
+| [Technology stack](docs/TECH_STACK.md) | Implemented stack, setup and deployment plan |
+| [Engineering requirements](docs/REQUIREMENTS.md) | Safety, access and evaluation requirements |
+| [System design](docs/SYSTEM_DESIGN.md) | Architectural design and trust boundaries |
+| [Frontend design](docs/FRONTEND_DESIGN.md) | Layout, interactions and accessibility |
+| [Ticket data model](docs/TICKET_DATA_MODEL.md) | Proposed normalized storage design |
+| [OpenAPI contract](backend/openapi.json) | Exact requests, responses and errors |
+| [OpenAPI summary](docs/API_CONTRACT.md) | Plain-English API summary |
+| [Workflow, endpoints and tests](docs/COPILOT_WORKFLOW_AND_TESTS.md) | Current implementation, all 16 endpoints, verified coverage and limits |
+| [Automated test design](docs/AUTOMATED_TEST_DESIGN.md) | Wider test roadmap, including unfinished evaluation/browser checks |
+| [Data analysis](docs/DATA_ANALYSIS.md) | Findings across the supplied datasets |
 
-## Run the backend
+## Run locally
 
-Requires Python 3.12 and uv. If uv is not on PATH, the project-local executable installed during setup is `../.tools/bin/uv.exe` when working inside `backend/`.
+From `backend/`, with Python 3.12 or 3.13 and uv:
 
 ```powershell
-cd backend
 uv sync --locked
+Copy-Item .env.example .env
 uv run python scripts/verify_database.py
+uv run python -m app.agents.rag index
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-API documentation: <http://127.0.0.1:8000/docs>. Health: <http://127.0.0.1:8000/api/health>.
+Copy the example only for a new configuration. Set `GROQ_API_KEY` for model stages and
+`JWT_SECRET` for persistent signed sessions. Indexing downloads local embedding weights on first
+use. Local guards and login remain available without a model key; permitted model requests return
+unavailable. API docs: <http://127.0.0.1:8000/docs>.
 
-For standalone RAG, set `GROQ_API_KEY` in `backend/.env`; optional `GROQ_MODEL`
-and retrieval settings are documented in `backend/.env.example`. Current endpoints
-do not require model access.
+The workstation-local uv executable is `../.tools/bin/uv.exe` from either codebase directory.
 
-## Run the frontend
-
-Requires Node.js 22.12+ and npm. Use a second terminal:
+From `frontend/`, in a second terminal:
 
 ```powershell
-cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Open <http://localhost:5173> after installing dependencies. The planned Vite `/api` proxy and product screens are documented but not yet configured. Neither API keys nor the database belong in the frontend.
+Vite serves <http://localhost:5173> and proxies `/api` to `127.0.0.1:8000`.
+Credentials and databases belong in the backend.
 
-The first frontend dependency install was stopped for document review, so its lockfile is pending. After generating and committing `package-lock.json`, use `npm ci` for subsequent setup.
-
-## Rebuild the SQL database
-
-The original CSV files remain unchanged in `data/`. Evaluation CSVs remain separate from the operational database.
+## Verify
 
 ```powershell
 cd backend
-uv run python scripts/import_csv.py --replace
-uv run python scripts/verify_database.py
-```
-
-Stop the backend before replacing its database. `--replace` intentionally rebuilds only the source-data snapshot. Proposed application tickets will use a separate writable `storepilot.db`; that database and migrations are not implemented yet.
-
-Without uv or installed dependencies, these two scripts also work with plain Python 3.12 because they use only the standard library.
-
-## Check the scaffold
-
-```powershell
-cd backend
-uv run pytest
+uv run pytest -q
 uv run ruff check app scripts tests
+uv run python scripts/verify_database.py
 ```
 
 ```powershell
@@ -117,4 +97,6 @@ npm run lint
 npm run build
 ```
 
-The backend dashboard uses the event anchor `2026-10-10T12:00:00+05:30`, not the machine clock. Its distributions cover unresolved historical cases at or before that anchor. Import verification passed; full backend/frontend checks remain pending.
+See [backend tests](backend/tests/README.md) and [browser test plan](frontend/tests/README.md).
+Backend tests replace model responses while keeping the real graph, SQL executor, authentication,
+API handlers and persistence. They do not certify live model quality or frontend journeys.

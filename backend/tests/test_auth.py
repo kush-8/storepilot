@@ -21,7 +21,7 @@ def test_login_issues_signed_token_for_exact_directory_pair(client, databases):
     assert claims["jti"]
     assert body["employee"]["escalation_level"] == 1
     with sqlite3.connect(databases["application"]) as connection:
-        stored = str(connection.execute("SELECT * FROM auth_sessions").fetchall())
+        stored = str(connection.execute("SELECT * FROM sessions").fetchall())
     assert body["access_token"] not in stored
 
 

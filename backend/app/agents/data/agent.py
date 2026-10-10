@@ -8,8 +8,10 @@ from datetime import datetime, timedelta, timezone
 from langchain_core.runnables import Runnable, RunnableConfig
 from pydantic import ValidationError
 
+from ..guardrails import PIIAgent, SafetyAgent
 from ..router.schemas import RouteDecision
 from ..triage.schemas import TriageResult
+from .analytics import ANALYTICS_PROMPT, AnalyticsPlan, AnalyticsResult, aggregate
 from .prompts import SQL_PROMPT, SQL_SCHEMA
 from .schemas import DataEvidence, DataResult, GeneratedSqlPlan
 from .sql_tool import (
@@ -23,12 +25,57 @@ logger = logging.getLogger(__name__)
 
 
 class DataAgent:
-    def __init__(self, model: Runnable, executor: ReadOnlySqlExecutor, anchor: datetime):
+    def __init__(
+        self,
+        model: Runnable,
+        executor: ReadOnlySqlExecutor,
+        anchor: datetime,
+        analytics_model: Runnable | None = None,
+    ):
         if anchor.utcoffset() is None:
             raise ValueError("Event anchor must include a timezone.")
         self.chain = SQL_PROMPT | model
         self.executor = executor
         self.anchor = anchor.astimezone(timezone(timedelta(hours=5, minutes=30)))
+        self.analytics_chain = ANALYTICS_PROMPT | analytics_model if analytics_model else None
+
+    def analyze(self, question: str, *, authorized_tickets: list[dict]) -> AnalyticsResult:
+        """Caller supplies rows already scoped using current directory levels and dates.
+
+        Only the sanitized question reaches the model; aggregation never sends ticket
+        titles, descriptions, creator IDs or hidden rows to an external provider.
+        """
+        pii = PIIAgent().sanitize(question)
+        safety = SafetyAgent().evaluate(pii)
+        if not safety.allowed:
+            return AnalyticsResult(
+                status="refusal",
+                answer=safety.safe_response,
+                pii_detected=pii.pii_detected,
+                safety_refusal=True,
+            )
+        try:
+            if self.analytics_chain is None:
+                raise RuntimeError("Analytics planner is not configured")
+            plan = AnalyticsPlan.model_validate(
+                self.analytics_chain.invoke({"question": pii.sanitized_text})
+            )
+            result = aggregate(plan, authorized_tickets)
+            clean = PIIAgent().sanitize(result.answer)
+            if not SafetyAgent().evaluate(clean).allowed:
+                raise ValueError("Unsafe planner response")
+            result.answer = clean.sanitized_text
+            if result.follow_up:
+                result.follow_up = result.answer
+            result.pii_detected = pii.pii_detected
+            return result
+        except Exception as exc:
+            logger.warning("Analytics planning failed (%s)", type(exc).__name__)
+            return AnalyticsResult(
+                status="unavailable",
+                answer="Ticket analytics is unavailable. Please retry.",
+                pii_detected=pii.pii_detected,
+            )
 
     def _parameters(self, triage: TriageResult, plan: RouteDecision) -> dict:
         start = self.anchor - timedelta(days=plan.lookback_days)
@@ -49,6 +96,10 @@ class DataAgent:
         viewer_employee_id: str | None = None,
         config: RunnableConfig | None = None,
     ) -> DataResult:
+        if not self.executor.path.is_file():
+            return DataResult(status="unavailable", summary="The retail database is unavailable.")
+        if "inventory" in plan.queries and not (triage.entities.store_id or triage.entities.sku):
+            return DataResult(status="needs_clarification", summary="Provide a store or SKU.")
         parameters = self._parameters(triage, plan)
         try:
             generated = GeneratedSqlPlan.model_validate(

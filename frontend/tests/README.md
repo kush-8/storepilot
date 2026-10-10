@@ -4,10 +4,10 @@ This isolated Playwright package leaves the frontend application manifest unchan
 
 ## Run
 
-From `frontend/` install existing app dependencies without creating an app lockfile:
+From `frontend/`, install application dependencies from its checked-in lockfile:
 
 ```powershell
-npm install --package-lock=false --cache tests/.cache/npm-app
+npm ci --cache tests/.cache/npm-app
 cd tests
 npm ci --cache .cache/npm
 npm run test:list
@@ -17,7 +17,7 @@ npm test
 
 Playwright starts Vite at http://127.0.0.1:5173 and stops it after the run. Edge is the default installed browser on this machine. For another browser installation set STOREPILOT_BROWSER_CHANNEL, or use `chromium` and install that Playwright browser with `npx playwright install chromium`. To use an already-running frontend set STOREPILOT_URL. Browser/server startup may require execution outside the Windows sandbox.
 
-The checked-in lockfile belongs to this test package only. Cache, node_modules, traces and test-results are ignored. Retry count is zero so failures remain visible.
+The browser package has its own lockfile, separate from the frontend application lockfile. Cache, node_modules, traces and test-results are ignored. Retry count is zero so failures remain visible.
 
 ## Every browser test
 
@@ -32,10 +32,10 @@ The checked-in lockfile belongs to this test package only. Cache, node_modules, 
 
 The UI selectors establish accessible names: Employee ID, Store ID, Dashboard, Copilot, Message, Send and Generate ticket. Each browser test uses a fresh HTTP fixture/session. Real API tests in backend/tests prove storage and scope independently; these UI journeys prove client behaviour with known responses.
 
-## Recorded red baseline
+## Historical red baseline
 
 All **6 tests collected and executed; 6 failed, 0 skipped** against the starter Vite scaffold. Each reached the page but timed out waiting for the Employee ID login control, which has not been implemented. Edge and Vite launched successfully; no browser startup errors occurred. The baseline used a 6-second test timeout (`npm test -- --timeout=6000`); normal configured timeout is 20 seconds. Passing test collection is not a passing journey.
 
-The current first failure blocks deeper UI assertions until login is implemented. Follow-up/save/retry/logout assertions will be exercised progressively during TDD. No frontend product code was changed to make these tests pass.
+That run predates the current login/screens; it does not describe the present UI. Browser journeys have not been reverified during backend cleanup. Follow-up/save/retry/logout assertions will be exercised progressively during TDD. Frontend Copilot and dashboard still use mock services and await integration.
 
-See [full app/API flow](../../backend/tests/API_FLOW_AND_TESTS.md) and [backend test guide](../../backend/tests/README.md).
+See [full app/API flow](../../docs/COPILOT_WORKFLOW_AND_TESTS.md) and [backend test guide](../../backend/tests/README.md).

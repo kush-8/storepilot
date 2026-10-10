@@ -1,14 +1,14 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "StorePilot API — Proposed Contract",
+    "title": "StorePilot API",
     "version": "2.0.0",
-    "description": "Documentation only. No endpoint, login/JWT, agent, ticket migration, or test implementation is authorized by this file. Two product pages: Dashboard and chat Copilot. Backend-only evaluation has no frontend/public endpoint. Ticket reads/aggregates/evidence enforce creator current level <= viewer current level. Prototype login validates Employee ID + assigned Store ID and issues JWT; IDs are not secret credentials."
+    "description": "StorePilot backend contract. The 16 operations are registered in FastAPI. Copilot calls the guarded LangGraph workflow with policy RAG and the shared Data/Analytics agent. Live model stages require configured Groq credentials and a built Chroma policy index. Two product pages: Dashboard and chat Copilot. Evaluation remains backend-only. Reads and aggregates enforce creator current level <= viewer current level. Prototype Employee ID + assigned Store ID login issues JWT; IDs are not secret credentials. See docs/COPILOT_WORKFLOW_AND_TESTS.md for verification and remaining legacy test gaps."
   },
   "servers": [
     {
       "url": "http://127.0.0.1:8000",
-      "description": "Proposed local FastAPI base URL; not a statement that these routes exist"
+      "description": "Local FastAPI base URL"
     }
   ],
   "tags": [
@@ -2757,7 +2757,7 @@
       }
     }
   },
-  "x-implementation-status": "documentation-only",
+  "x-implementation-status": "agent-workflow-connected",
   "x-login": {
     "fields": [
       "employee_id",

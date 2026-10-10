@@ -1,6 +1,9 @@
 # StorePilot — Automated Test Design
 
-Version: 1.0 | Status: test specification only; no test files, CI workflow or application code implemented
+Version: 2.2 | Status: backend workflow/API connected and tests green; frontend/evaluation work remains
+
+Current implementation and verified coverage: [Copilot workflow and tests](COPILOT_WORKFLOW_AND_TESTS.md). The detailed design below includes planned requirements; the current report distinguishes implemented behavior from remaining work.
+
 
 ## 1. Objective and execution layers
 
@@ -16,11 +19,11 @@ Verify that StorePilot safely turns employee issues into grounded persistent tic
 | Retrieval/model evaluation | Backend CLI + recorded fixtures and separate real-model runs | Chroma relevance, citations, grounded behaviour and public challenge outputs |
 | Deployment smoke | Compose smoke suite when packaging exists | Startup, health, private services, app/vector persistence |
 
-These are planned choices. Do not install packages, generate executable tests, claim passing suites, or modify lockfiles until implementation is authorized.
+These are the designed layers. Backend agent/workflow/API tests are implemented and run; browser, evaluation and deployment checks are not certified complete. See the current report for exact results.
 
 ## 2. Deterministic fixture design
 
-Use temporary independent retail.db and storepilot.db per test. Never mutate the supplied database/CSV files. Freeze a controllable clock and inject model/retrieval adapters.
+Use temporary independent retail.db and storepilot.db per test. Never mutate the supplied database or restore removed operational CSV files. Freeze a controllable clock and inject model/retrieval adapters.
 
 Employee fixtures: E9001/ST001/level 1; E9002/ST002/level 2; E9003/ST003/level 3; E9004/ST004/level 4. Each creator has two tickets: one Open P2 and one Closed P3. Add separate fixtures for hidden P1, missing creator, revoked session, level change, safety incidents and ambiguous SKU names.
 

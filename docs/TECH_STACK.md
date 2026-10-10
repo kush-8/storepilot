@@ -1,135 +1,107 @@
 # StorePilot — Technology Stack and Setup
 
-Status: agreed technology direction; dependency and container changes await implementation.
+Status: backend agents/API implemented; frontend integration, Docker and evaluation remain planned.
 
-## 1. Chosen architecture
+## Architecture and dependencies
 
-Two independent codebases share an HTTP contract:
+Two independent codebases share the maintained [OpenAPI contract](../backend/openapi.json).
 
-- `frontend/`: React + TypeScript built with Vite; npm dependency management.
-- `backend/`: Python 3.12 + FastAPI; uv dependency management.
-- Agent orchestration: LangGraph with typed state and conditional routing.
-- Vector database: Chroma for policy documents, embeddings, and citation metadata.
-- Source operational data: read-only SQLite `retail.db` under `backend/database/`.
-- Application data: separate writable SQLite `storepilot.db` for tickets, private conversations, drafts, JWT session metadata, and audit events.
-- Packaging and local deployment: Docker images and Docker Compose.
+| Technology | Current use |
+| --- | --- |
+| React + Vite | JavaScript/JSX frontend; CSS, Lucide icons and Recharts; npm lockfile |
+| Python 3.12/3.13 + uv | Backend runtime and locked dependency management |
+| FastAPI + Uvicorn + Pydantic | HTTP endpoints and typed request/agent contracts |
+| LangGraph | PII -> Safety -> Triage -> Router -> RAG/Data/Both -> validated response |
+| LangChain Core/Groq/Chroma/text splitters | Structured model stages, policy loading, retrieval and grounded generation |
+| Groq | Existing generation provider; configured only in the backend |
+| Chroma + local ONNX MiniLM | Persistent policy vectors, bounded retrieval and source provenance |
+| SQLite + sqlglot | Read-only operational SQL with AST restrictions; transactional application state |
+| HS256 JWT with Python standard library | Exact employee/store login, 30-minute tokens, persisted revocation and directory revalidation |
+| pytest + httpx + JSON Schema/OpenAPI validators | Offline graph, RAG, guards, real API/auth/storage and contract verification |
+| Ruff / Oxlint | Backend and frontend static checks |
+| Docker + Docker Compose | Requested packaging; deployment files are not yet implemented |
 
-React is the UI layer. FastAPI provides the backend.
+Backend dependencies are declared in `backend/pyproject.toml` and pinned by `backend/uv.lock`.
+Test validators belong to its `dev` group; no separate test requirements file is needed.
+The direct OpenAI/scikit-learn dependencies from the earlier scaffold are no longer required.
+Frontend dependencies use `frontend/package.json` and `frontend/package-lock.json`.
+Browser tests have their own package and lockfile under `frontend/tests/`.
 
-## 2. Backend choices
+## Storage and agent responsibilities
 
-| Technology | Use | Decision |
-|---|---|---|
-| Python 3.12 | Application and data processing | Standard library covers CSV, SQLite, hashing, dates, and JSON |
-| uv | Environment, dependency resolution, and execution | `pyproject.toml` declares dependencies; `uv.lock` pins resolution |
-| FastAPI + Uvicorn | Typed HTTP API and local server | OpenAPI supports contract inspection from the frontend |
-| Pydantic | Request, response, and agent result validation | Reject invalid categories, confidence values, and output shapes |
-| sqlite3 | Source and application databases | Immutable source connections; deterministic transactional ticket writes; employee-scoped agent reads |
-| LangGraph | Cooperating agent workflow | PII -> Safety -> Router -> RAG/Data/Both; dashboard Analytics and validated ticket handoff |
-| Chroma (`chromadb`) | Vector search over policy sections | Persistent policy collection with embeddings, document text, and citation metadata |
-| OpenAI Python SDK | Planned model adapter | Structured output through a configured compatible model; no hardcoded model choice |
-| python-dotenv | Local backend configuration | Credentials remain in ignored backend `.env` |
-| JWT implementation (library selected later) | Requested Employee ID + Store ID login | Signed short-lived token, server session/revocation checks, current directory/level lookup; no implementation yet |
-| pytest + httpx | Backend behavior and API tests | Verify importer safety and actual API/data integration |
-| Ruff | Python lint checks | Keep source consistent without a separate formatting stack |
-| Docker + Docker Compose | Repeatable application packaging | Separate frontend, backend, and Chroma services; persistent data mounts |
+| Store | Contents and boundary |
+| --- | --- |
+| `backend/database/retail.db` | Nine operational tables, 2,970 records and import provenance; read-only at runtime |
+| `backend/database/storepilot.db` | Sessions, structured JSON records for private chats/drafts/tickets/events, retry receipts and rate counters; initialized by the runtime |
+| `backend/.cache/chroma` | Derived policy index; source Markdown remains authoritative |
+| `backend/.cache/embeddings` | Downloaded local ONNX embedding weights |
+| `backend/evaluation/` | Retained evaluation prompts and prediction schema; runner remains outstanding |
 
-LangGraph workflows, Chroma retrieval, model integration, and Docker packaging are planned. The current backend manifest/lockfile still describe the earlier scaffold; when implementation resumes, add `langgraph` and `chromadb`, remove the direct `scikit-learn` dependency, and regenerate `uv.lock`. The model SDK remains behind a backend adapter. Model credentials are unnecessary for importing data or viewing the initial dashboard. Structured schemas constrain output format, but grounding and business-rule correctness require separate validation.
+The removed operational CSVs are unnecessary. Verification uses SQLite integrity, foreign keys,
+manifest row counts and seeded observations; it cannot recompute hashes from absent CSV contents.
+The proposed normalized application schema is retained in
+[TICKET_DATA_MODEL.md](TICKET_DATA_MODEL.md); the current runtime uses structured JSON records.
 
-### Storage responsibilities
+The same DataAgent handles operational evidence and dashboard ticket-count questions.
+Operational queries pass a read-only SQL tool with table/column/function allowlists, named
+parameters, row/execution caps, mandatory dates and case visibility. Analytics receives the full
+already-authorized ticket set and computes bounded counts/groups deterministically; only the
+sanitized question goes to its planning model.
 
-| Store | Contents | Access |
-|---|---|---|
-| Chroma | Policy section embeddings, text, source IDs, headings, slugs, hashes | Backend retrieval agent and controlled indexing job |
-| SQLite retail.db | Retail source tables and import provenance | Read-only source queries; related support cases also enforce employee scope |
-| SQLite storepilot.db | Tickets, conversations/drafts, evidence/events, idempotency and JWT session metadata | Ticket service transactions; authorized read-only Data/Analytics tools |
-| Local artifacts | Backend-only evaluation outputs | Controlled evaluator; no frontend evaluation endpoint |
+Policy RAG loads Markdown, chunks by headings, retrieves local Chroma vectors and validates
+citation IDs and model output. Safety/PII guardrails run before routing and validate generated
+content. APIs verify current policy hashes, refund/priority rules, draft eligibility and ownership.
 
-CSV records remain in SQLite. Do not embed entire operational tables or public expected answers into the policy collection. Chroma is a derived retrieval index; source Markdown remains authoritative.
+## Local setup
 
-## 3. Frontend choices
-
-| Technology | Use |
-|---|---|
-| React | Reusable screen and evidence components |
-| TypeScript | API types, state, and component props |
-| Vite | Dev server, API proxy, and production build |
-| Native fetch | API client with explicit loading/error states and cancellation |
-| CSS variables and plain CSS | Shared design tokens and responsive layouts |
-| Oxlint | Static frontend checks supplied by the generated Vite template |
-
-The scaffold avoids adding a router or state library before multiple screens need them. Use accessible HTML/CSS bars for initial distributions; larger analytical charts can be added later with an accompanying table.
-
-StorePilot has Dashboard and chat Copilot pages, plus a login utility view. Dashboard combines overview and Analytics. Copilot reports issues, asks follow-ups, recommends steps and generates persistent tickets. Evaluation stays in backend tests/CLI.
-
-## 4. Repository ownership
-
-```text
-frontend/                  # npm project, UI source; lockfile after initial install
-backend/                   # uv project, API, scripts, tests, SQL database
-docs/                      # shared product/engineering documentation
-data/                      # immutable input CSV files
-backend/knowledge_base/    # immutable source policies (current location)
-evaluation/                # public cases and prediction schema
-```
-
-Each codebase installs, tests, and builds independently. The backend reads the supplied inputs by paths derived from its own location; API data never depends on the frontend working directory.
-
-Planned deployment files: `frontend/Dockerfile`, `backend/Dockerfile`, per-codebase `.dockerignore`, and root `compose.yaml`. They have not been created.
-
-## 5. Local commands
-
-Python requires `>=3.12,<3.14`; `.python-version` selects 3.12. Use Node.js 22.12+ for the generated Vite template.
+From `backend/`:
 
 ```powershell
-cd backend
 uv sync --locked
+Copy-Item .env.example .env
 uv run python scripts/verify_database.py
+uv run python -m app.agents.rag index
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run pytest -q
+uv run ruff check app scripts tests
 ```
+
+Copy the example only for a new configuration. Set `GROQ_API_KEY` and a persistent `JWT_SECRET`
+in ignored `backend/.env`. `DATABASE_PATH` and `APPLICATION_DATABASE_PATH` select separate
+SQLite files. See `.env.example` for actual model/retrieval settings. Indexing downloads local
+embedding weights on first use. Readiness checks configured resources; it does not certify live
+provider availability. Permitted model requests return unavailable without model setup.
+
+From `frontend/`:
 
 ```powershell
-cd frontend
-npm install
+npm ci
 npm run dev
+npm run lint
+npm run build
 ```
 
-If uv is not installed on PATH on this workstation, `../.tools/bin/uv.exe` is available from either codebase directory. That local tool directory is ignored and is not a portable project dependency; other machines should install uv normally.
+Vite serves port 5173 and proxies `/api` to `127.0.0.1:8000`. Login is connected with a demo
+fallback; other product screens currently use local mock services. The target navigation remains
+Dashboard (overview plus Analytics) and chat Copilot, with login and ticket detail utilities.
+Evaluation stays in backend tests/CLI. UI implementation uses JavaScript today; TypeScript remains
+a possible frontend migration rather than an installed application requirement.
 
-## 6. Configuration and deployment boundary
+The workstation-local uv executable is `../.tools/bin/uv.exe` from either codebase directory.
+That ignored tool folder is not a portable dependency; other machines need their own uv setup.
 
-Backend `.env` currently holds `DATABASE_PATH`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. Planned settings add `APPLICATION_DATABASE_PATH`, backend-only `JWT_SIGNING_KEY`, JWT issuer/audience/expiry, and source/application data modes. Requested login validates Employee ID + assigned Store ID and issues JWT; neither login nor token code is implemented.
+## Configuration and deployment plan
 
-The fixed anchor applies to historical challenge replay and backend evaluation. Live application tickets use actual server UTC timestamps and captured server-now windows. IDs/store IDs are not secrets; the requested prototype pair lookup establishes directory context. Frontend retains bearer JWT only in memory; current levels always come from the server directory.
+Keep provider keys, JWT signing secrets and SQLite files in the backend. Frontend tokens remain
+in memory; request authorization uses current directory levels. Historical data uses the supplied
+noon IST anchor on 10 October 2026; live tickets use server UTC timestamps and `(start,end]` filters.
 
-Planned settings also include `CHROMA_HOST`, `CHROMA_PORT`, `CHROMA_COLLECTION`, and an explicit embedding model/version. Use `CHROMA_HOST=localhost` for a host backend and `CHROMA_HOST=chroma` inside Compose. Keep the same embedding model, dimensions, and normalization for policy indexing and queries; record that configuration with index/evaluation artifacts. Choose and pin the embedding implementation before indexing. Provision any model weights during setup so first-request downloads do not disrupt the demo.
+Docker packaging still needs frontend/backend Dockerfiles, `.dockerignore` files and `compose.yaml`.
+Serve built frontend assets through a same-origin `/api` proxy to FastAPI. Mount the operational
+snapshot/policy sources read-only, and persist writable application database/journal files and
+Chroma index separately. Current Chroma is embedded locally; a private Chroma server deployment
+would require an explicit client/configuration change. Provision embeddings and index as deliberate
+setup steps. Container startup must not rebuild source data or erase application tickets.
 
-Planned development setup uses Vite's `/api` proxy to `127.0.0.1:8000`; that proxy is not configured yet. For deployment, serve the built frontend and proxy `/api` to FastAPI on the same origin. A split-origin deployment would require an explicit CORS allowlist. Never place credentials in a `VITE_*` variable, browser storage, or a frontend bundle.
-
-### Docker Compose plan
-
-- `frontend`: build React with Vite; serve static assets through a web server that proxies `/api` to `backend:8000`.
-- `backend`: Python image with uv-managed dependencies; run FastAPI via Uvicorn; read the SQLite snapshot and policy source files from read-only mounts; mount writable application DB directory separately, including SQLite journal files.
-- `chroma`: private vector-database service, reached by the backend HTTP client; persist index data in a named volume.
-- Run policy indexing as a deliberate setup job after Chroma is ready. It must not silently rewrite the collection on every API startup.
-- Pin container versions when implementation begins. Compose must preserve application tickets/conversations, vector data, and evaluation artifacts across container recreation. Source rebuild and application migration are separate operations.
-- Publish only the frontend port for the packaged demo; expose backend/Chroma host ports only in a local development configuration.
-
-The future packaged startup command is `docker compose up --build`. It will become runnable after the Dockerfiles, service health checks, proxy, mounts, and indexing job are implemented. LangGraph runs inside FastAPI; it is not a separate service.
-
-## 7. Dependency discipline
-
-The backend lockfile exists. Frontend dependency installation was stopped for document review; generate its `package-lock.json` with the initial `npm install` when implementation resumes. Commit both lockfiles, then use `npm ci` and `uv sync --locked` for repeatable setup. Declared version ranges are compatibility bounds, not a claim that they are the newest packages. Update lockfiles deliberately and rerun relevant checks after dependency changes.
-
-## 8. Official references
-
-- [React: building from scratch](https://react.dev/learn/build-a-react-app-from-scratch)
-- [Vite: setup and React templates](https://vite.dev/guide/)
-- [FastAPI: application setup](https://fastapi.tiangolo.com/tutorial/first-steps/)
-- [uv: project configuration](https://docs.astral.sh/uv/concepts/projects/config/)
-- [Pydantic validation](https://docs.pydantic.dev/latest/)
-- [LangGraph overview and stateful orchestration](https://docs.langchain.com/oss/python/langgraph/overview)
-- [Chroma collections and vector retrieval](https://docs.trychroma.com/docs/overview/getting-started)
-- [Chroma client-server connection](https://docs.trychroma.com/docs/run-chroma/client-server)
-- [Docker Compose application model](https://docs.docker.com/compose/intro/compose-application-model/)
-- [OpenAI: structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses)
+See the [current workflow and verification report](COPILOT_WORKFLOW_AND_TESTS.md) for all endpoints,
+test results and live verification limits. Update lockfiles deliberately and rerun relevant checks.

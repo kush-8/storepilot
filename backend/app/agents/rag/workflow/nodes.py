@@ -6,6 +6,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.runnables import Runnable, RunnableConfig
 from pydantic import ValidationError
 
+from ...guardrails import PIIAgent, SafetyAgent
 from ..generation.validation import abstention, validate_answer
 from ..schemas import GeneratedAnswer, RagResult, RetrievedSection
 from .state import RagState
@@ -22,13 +23,34 @@ class RagNodes:
         question = state["question"].strip()
         if not question or len(question) > 4000:
             raise ValueError("Question must contain 1 to 4000 characters.")
+        question = PIIAgent().sanitize(question).sanitized_text
         documents = self.retriever.invoke(question, config=config)
         return {
             "question": question,
-            "sections": [RetrievedSection.from_document(doc) for doc in documents],
+            "sections": [
+                RetrievedSection.from_document(doc).model_copy(
+                    update={
+                        "text": PIIAgent().sanitize(doc.page_content).sanitized_text,
+                        "heading": PIIAgent().sanitize(doc.metadata["heading"]).sanitized_text,
+                        "title": PIIAgent().sanitize(doc.metadata["title"]).sanitized_text,
+                    }
+                )
+                for doc in documents
+            ],
         }
 
     def generate(self, state: RagState, config: RunnableConfig):
+        if any(
+            not SafetyAgent().evaluate(PIIAgent().sanitize(section.text)).allowed
+            for section in state["sections"]
+        ):
+            return {
+                "result": RagResult(
+                    status="invalid_response",
+                    answer="The retrieved "
+                    "policy context failed safety checks. Please seek human review.",
+                )
+            }
         try:
             draft = self.answer_chain.invoke(
                 {"question": state["question"], "sections": state["sections"]},

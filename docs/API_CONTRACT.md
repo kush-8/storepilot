@@ -1,12 +1,15 @@
 # StorePilot — OpenAPI Summary and Contract Notes
 
-Version: 2.0 | Status: proposed API, not implementation
+Version: 2.2 | Status: backend workflow/API connected and tests green; frontend/evaluation work remains
+
+Current implementation and verified coverage: [Copilot workflow and tests](COPILOT_WORKFLOW_AND_TESTS.md). The detailed design below includes planned requirements; the current report distinguishes implemented behavior from remaining work.
+
 
 ## 1. What the document is
 
-[backend/openapi.json](../backend/openapi.json) is a machine-readable OpenAPI 3.1.0 contract for the proposed StorePilot backend: **16 operations across 15 paths, with 35 reusable schemas**. It describes requests, responses, JWT protection, validation and errors. It is not generated from implemented FastAPI routes and does not make any endpoint runnable.
+[backend/openapi.json](../backend/openapi.json) is a machine-readable OpenAPI 3.1.0 contract for the StorePilot backend: **16 operations across 15 paths, with 35 reusable schemas**. It describes requests, responses, JWT protection, validation and errors. FastAPI serves this maintained contract; executable routes live in backend/app/main.py.
 
-Only the earlier /api/health and unscoped starter /api/dashboard code exist. They do not yet implement this revised contract. Source files and application code remain unchanged.
+All 16 operations are now registered. Copilot uses the guarded agent workflow and Dashboard Analytics uses the same DataAgent. Live model verification awaits GROQ_API_KEY configuration; see the linked report for test results.
 
 ## 2. Plain-English endpoint summary
 
@@ -36,7 +39,7 @@ Confirmed ticket-read rule: creator current level <= viewer current level. Level
 ## 4. Chat-to-ticket sequence
 
 1. POST /api/conversations opens an owner-only issue thread.
-2. POST /api/conversations/{conversation_id}/messages sends an issue or follow-up. Each turn runs PII -> Safety -> Router -> RAG/Data/Both as needed.
+2. POST /api/conversations/{conversation_id}/messages sends an issue or follow-up. Each turn runs PII -> Safety -> Triage -> Router -> RAG/Data/Both as needed.
 3. The response can contain clarification, recommended steps, refusal, dashboard redirect, or a grounded server-held ticket draft.
 4. GET /api/ticket-drafts/{draft_id} retrieves the owner draft and generation_allowed flag.
 5. POST /api/tickets sends draft_id + draft_revision and Idempotency-Key.

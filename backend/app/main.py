@@ -11,8 +11,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from app.agents.data.analytics import AnalyticsResult
+from app.agents.guardrails import PIIAgent, SafetyAgent
 from app.auth import current, directory, employee_context, issue, rate_limit
-from app.copilot import message, policies, sanitize, triage, unsafe
+from app.dependencies import get_workflow
 from app.models import (
     AnalyticsRequest,
     ConversationCreate,
@@ -23,6 +25,9 @@ from app.models import (
     TicketCreate,
 )
 from app.reporting import dashboard_data, detail, query, summary
+from app.services.copilot import CopilotService
+from app.services.messages import message, sanitize
+from app.services.policies import policies
 from app.storage import (
     ROOT,
     check_reference,
@@ -110,6 +115,9 @@ def health():
                 "support_cases",
                 "inventory",
                 "product_master",
+                "vendor_master",
+                "receipts",
+                "returns_quality",
                 "escalation_matrix",
                 "import_manifest",
             ):
@@ -123,10 +131,28 @@ def health():
         capabilities["application_database"] = "ready"
     except HTTPException:
         pass
-    if policies():
-        capabilities["retrieval"] = "ready"
-    if all(
-        capabilities[k] == "ready" for k in ("source_database", "application_database", "retrieval")
+    configured = False
+    try:
+        from app.agents.rag.config import RagSettings
+        from app.agents.rag.retrieval import PolicyIndex
+
+        settings = RagSettings.from_env()
+        configured = bool(
+            settings.groq_api_key and settings.groq_api_key.get_secret_value().strip()
+        )
+        index = PolicyIndex(settings)
+        documents, collection = index.snapshot()
+        encoder = settings.embedding_cache_path / "all-MiniLM-L6-v2/onnx/model.onnx"
+        if encoder.is_file() and index.store.is_ready(collection, len(documents)):
+            capabilities["retrieval"] = "ready"
+    except Exception:
+        pass
+    if (
+        all(
+            capabilities[k] == "ready"
+            for k in ("source_database", "application_database", "retrieval")
+        )
+        and configured
     ):
         capabilities["chat"] = "ready"
     unavailable = any(
@@ -226,14 +252,17 @@ def get_conversation(conversation_id: UUID, employee: Employee):
 
 
 @app.post("/api/conversations/{conversation_id}/messages")
-def send_message(conversation_id: UUID, body: MessageRequest, employee: Employee):
+def send_message(
+    conversation_id: UUID, body: MessageRequest, employee: Employee, workflow=Depends(get_workflow)
+):
     rate_limit("chat:" + employee["employee_id"], 30)
     owner = employee["employee_id"]
-    clean, _ = sanitize(body.content)
+    clean, detected = sanitize(body.content)
     # Only sanitized request digests are retained, never raw sensitive content.
     context = body.context.model_dump(exclude_none=True)
     if "register_id" in context:
-        context["register_id"] = sanitize(context["register_id"])[0]
+        context["register_id"], context_detected = sanitize(context["register_id"])
+        detected = detected or context_detected
     digest = hashlib.sha256(json.dumps([clean, context], sort_keys=True).encode()).hexdigest()
     check_reference(context.get("affected_store_id"), context.get("sku"))
     with state() as db:
@@ -246,13 +275,26 @@ def send_message(conversation_id: UUID, body: MessageRequest, employee: Employee
             if cached["digest"] != digest:
                 fail(409, "Message ID already used with different content")
             return json.loads(cached["payload"])
-        previous = conversation.get("issue_context", {})
-        previous.update(context)
-        # Follow-up classifications use sanitized prior user turns (bounded to request limit).
-        history = [m["content"] for m in conversation["messages"] if m["role"] == "user"]
-        combined = (" ".join(history[-4:]) + " " + clean).strip()[-4000:]
-        _, turn = triage(conversation, combined, previous)
-        turn["guardrails"]["pii_detected"] = sanitize(body.content)[1]
+        original_version = conversation["updated_at"]
+    previous = conversation.get("issue_context", {}).copy()
+    previous.update(context)
+    # Models run outside the SQLite write transaction. A changed conversation is rejected below.
+    history = [m["content"] for m in conversation["messages"] if m["role"] == "user"]
+    combined = (" ".join(history[-4:]) + " " + clean).strip()[-4000:]
+    turn = CopilotService(lambda: workflow).respond(conversation, combined, previous, owner)
+    turn["guardrails"]["pii_detected"] = detected or turn["guardrails"]["pii_detected"]
+    with state() as db:
+        current_conversation = get_record(db, "conversation", conversation_id, owner)
+        cached = db.execute(
+            "SELECT * FROM turns WHERE conversation_id=? AND client_id=?",
+            (str(conversation_id), str(body.client_message_id)),
+        ).fetchone()
+        if cached:
+            if cached["digest"] != digest:
+                fail(409, "Message ID already used with different content")
+            return json.loads(cached["payload"])
+        if current_conversation["updated_at"] != original_version:
+            fail(409, "Conversation changed while answering; retry with a new message ID")
         draft = turn["ticket_draft"]
         if conversation.get("latest_draft_id"):
             old = get_record(db, "draft", conversation["latest_draft_id"], owner)
@@ -434,78 +476,76 @@ def dashboard(employee: Employee, filters: Annotated[Filters, Depends(query_filt
 
 
 @app.post("/api/dashboard/analytics")
-def analytics(body: AnalyticsRequest, employee: Employee):
+def analytics(body: AnalyticsRequest, employee: Employee, workflow=Depends(get_workflow)):
     rate_limit("analytics:" + employee["employee_id"], 30)
-    clean, pii = sanitize(body.question)
+    pii = PIIAgent().sanitize(body.question)
+    safety = SafetyAgent().evaluate(pii)
+    clean = pii.sanitized_text
     thread_id = str(body.analytics_thread_id or uid())
     with state() as db:
-        if body.analytics_thread_id:
+        previous = (
             get_record(db, "analytics", thread_id, employee["employee_id"])
-        put_record(db, "analytics", thread_id, employee["employee_id"], dict(question=clean))
-    items, context, _ = query(body.filters, employee)
-    refusal = unsafe(clean)
-    supported = any(
-        word in clean.lower()
-        for word in (
-            "ticket",
-            "case",
-            "unresolved",
-            "priority",
-            "category",
-            "store",
-            "count",
-            "open",
-            "closed",
+            if (body.analytics_thread_id)
+            else {}
         )
+    # Scope/date filters are applied before DataAgent aggregation; no ticket text reaches a model.
+    items, context, _ = query(body.filters, employee)
+    question = (
+        (previous.get("question", "") + " " + clean).strip()[-4000:]
+        if previous.get("needs_follow_up")
+        else clean
     )
-    chosen = (
-        [t for t in items if t["status"] != "Closed"] if "unresolved" in clean.lower() else items
-    )
-    requested_priorities = [p for p in ("P1", "P2", "P3", "P4") if p.lower() in clean.lower()]
-    if requested_priorities:
-        chosen = [t for t in chosen if t["priority"] in requested_priorities]
-    from collections import Counter
-
-    field = (
-        "affected_store_id"
-        if "store" in clean.lower()
-        else ("category" if "category" in clean.lower() else "priority")
-    )
-    rows = [dict(label=k, count=v) for k, v in sorted(Counter(t[field] for t in chosen).items())]
-    if refusal or not supported:
-        rows = []
+    if not safety.allowed:
+        result = AnalyticsResult(
+            status="refusal",
+            answer=safety.safe_response,
+            safety_refusal=True,
+            pii_detected=pii.pii_detected,
+        )
+    else:
+        try:
+            result = workflow.data.analyze(question, authorized_tickets=items)
+        except Exception:
+            result = AnalyticsResult(
+                status="unavailable",
+                answer="Ticket analytics is unavailable. Check the model configuration.",
+            )
+    with state() as db:
+        put_record(
+            db,
+            "analytics",
+            thread_id,
+            employee["employee_id"],
+            dict(question=question, needs_follow_up=result.status == "clarification"),
+        )
     return dict(
         request_id=uid(),
         analytics_thread_id=thread_id,
-        result_type="refusal" if refusal else ("answer" if supported else "unsupported"),
-        answer="Restricted data requests are refused."
-        if refusal
-        else (
-            f"{len(chosen)} authorized tickets match; grouped by {field}."
-            if supported
-            else "Supported analytics: ticket counts by store, category or priority. "
-            "Use filters for dates and status."
-        ),
-        follow_up_question=None,
-        intent="ticket_counts" if supported and not refusal else None,
+        result_type=result.status,
+        answer=result.answer,
+        follow_up_question=result.follow_up,
+        intent="ticket_counts" if result.status == "answer" else None,
         context=context,
         columns=[
-            dict(key="label", label=field, value_type="string"),
+            dict(key="label", label=result.group_by, value_type="string"),
             dict(key="count", label="Tickets", value_type="number"),
         ],
-        rows=rows[:200],
-        total_rows=len(rows),
-        truncated=len(rows) > 200,
-        query_template_ids=["authorized_ticket_counts"] if rows else [],
+        rows=result.rows[:200],
+        total_rows=len(result.rows),
+        truncated=len(result.rows) > 200,
+        query_template_ids=["authorized_ticket_counts"] if result.status == "answer" else [],
         citations=[],
         evidence=[],
         guardrails=dict(
             pii_checked=True,
-            pii_detected=pii,
-            safety_refusal=refusal,
-            human_review_required=refusal,
+            pii_detected=pii.pii_detected or result.pii_detected,
+            safety_refusal=result.safety_refusal,
+            human_review_required=result.status in {"refusal", "unavailable"},
         ),
-        limitations=["Local template analytics; use explicit filters for date ranges and status."],
+        limitations=[
+            "Counts use the selected data mode, dates and current employee levels. "
+            "Ticket creation does not execute an operational action."
+        ],
     )
 
 
@@ -522,10 +562,10 @@ def contract():
     schema = json.loads((ROOT / "openapi.json").read_text(encoding="utf-8"))
     schema["info"]["title"] = "StorePilot API"
     schema["info"]["description"] = (
-        "Implemented local retail operations API. Prototype ID/store login. "
-        "Rule-based policy Copilot."
+        "Retail operations API with a guarded LangGraph Copilot, policy RAG and "
+        "shared Data/Analytics agent. Prototype ID/store login."
     )
-    schema["x-implementation-status"] = "implemented-local"
+    schema["x-implementation-status"] = "agent-workflow-connected"
     return schema
 
 

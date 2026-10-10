@@ -1,6 +1,9 @@
 # StorePilot — Application Flow
 
-Version: 2.0 | Status: proposed journeys; no further application implementation
+Version: 2.2 | Status: backend workflow/API connected and tests green; frontend/evaluation work remains
+
+Current implementation and verified coverage: [Copilot workflow and tests](COPILOT_WORKFLOW_AND_TESTS.md). The detailed design below includes planned requirements; the current report distinguishes implemented behavior from remaining work.
+
 
 ## 1. Navigation
 
@@ -13,7 +16,7 @@ Ticket detail is a drawer or inline panel reached from Dashboard or the chat rec
 
 ## 2. Startup and identity
 
-Employee enters Employee ID + assigned Store ID -> backend validates the directory pair -> issues JWT -> protected requests verify JWT/session -> backend looks up current employee level -> fetch authorized dashboard metrics and tickets. Missing identity/level shows an access error, never an unrestricted dataset or zero-valued success state. Login/JWT is design only.
+Employee enters Employee ID + assigned Store ID -> backend validates the directory pair -> issues JWT -> protected requests verify JWT/session -> backend looks up current employee level -> fetch authorized dashboard metrics and tickets. Missing identity/level shows an access error, never an unrestricted dataset or zero-valued success state. Login/JWT is implemented in the backend.
 
 Show employee role/level as read-only session context. Token expiry/logout clears private frontend data and returns to login. The affected issue store can differ from the login assignment. IDs are not secret credentials; this is the requested prototype identity flow.
 
@@ -24,7 +27,7 @@ The confirmed rule is creator current level <= viewer current level. Apply it be
 1. Employee sends an issue. Each new turn, including a follow-up answer and a draft edit, goes through the guardrails.
 2. PII agent masks phone/email and redacts cards/secrets before model context, persistence, or logs.
 3. Safety agent checks intent and injection. Unsafe requests stop before normal RAG/data access and receive a safe refusal/security route.
-4. Router identifies the intent, entities, impact, and evidence needs.
+4. Triage interprets intent/entities/impact; Router selects the evidence needs.
 5. Missing essential information triggers a focused follow-up in the same chat.
 6. Router selects RAG, Data, or Both. Policy-backed operational steps always require policy evidence; Data-only is suitable for factual lookups.
 7. Compose and validate category/priority, recommended steps, citations/evidence, and escalation.

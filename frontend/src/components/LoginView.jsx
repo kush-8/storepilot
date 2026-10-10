@@ -17,8 +17,15 @@ import {
   Activity,
 } from 'lucide-react';
 import { MOCK_EMPLOYEES, resolveEmployeeCredentials } from '../data/mockEmployees';
-import { STORES as FALLBACK_STORES } from '../data/mockData';
 import api from '../services/api';
+
+function formatLoginTime() {
+  return new Date().toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
 
 export default function LoginView({ onLogin }) {
   const [identifier, setIdentifier] = useState('E0035');
@@ -26,7 +33,6 @@ export default function LoginView({ onLogin }) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [storeId, setStoreId] = useState('ST001');
-  const [availableStores, setAvailableStores] = useState(FALLBACK_STORES);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
@@ -51,7 +57,7 @@ export default function LoginView({ onLogin }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Check Backend Health & Fetch Stores on mount
+  // Check backend health on mount
   useEffect(() => {
     let isMounted = true;
     async function checkBackend() {
@@ -114,11 +120,7 @@ export default function LoginView({ onLogin }) {
         token: apiResult.access_token,
         tokenExpiresAt: apiResult.expires_at,
         isBackendAuthenticated: true,
-        loginTimestamp: new Date().toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        }),
+        loginTimestamp: formatLoginTime(),
       };
 
       onLogin(authenticatedUser, rememberMe);
@@ -137,11 +139,7 @@ export default function LoginView({ onLogin }) {
           ...resolved,
           storeId: targetStoreId,
           isBackendAuthenticated: false,
-          loginTimestamp: new Date().toLocaleTimeString('en-IN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true,
-          }),
+          loginTimestamp: formatLoginTime(),
         };
         onLogin(fallbackUser, rememberMe);
       }
@@ -169,11 +167,7 @@ export default function LoginView({ onLogin }) {
         token: apiResult.access_token,
         tokenExpiresAt: apiResult.expires_at,
         isBackendAuthenticated: true,
-        loginTimestamp: new Date().toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        }),
+        loginTimestamp: formatLoginTime(),
       };
 
       onLogin(authenticatedUser, rememberMe);
@@ -183,11 +177,7 @@ export default function LoginView({ onLogin }) {
       const fallbackUser = {
         ...emp,
         isBackendAuthenticated: false,
-        loginTimestamp: new Date().toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        }),
+        loginTimestamp: formatLoginTime(),
       };
       onLogin(fallbackUser, rememberMe);
     }

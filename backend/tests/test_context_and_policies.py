@@ -1,10 +1,12 @@
 """Authenticated employee/location context and allowlisted policy citation resolution."""
 
+import hashlib
+import re
 from urllib.parse import quote
 
 import pytest
 
-from tests.support import EMPLOYEES, expect
+from tests.support import BACKEND, EMPLOYEES, expect
 
 
 def test_current_profile_comes_from_directory(client, auth):
@@ -31,8 +33,19 @@ def test_locations_include_store_and_warehouse_options(client, auth):
         "05_responsible_ai_policy.md",
     ],
 )
-def test_known_policy_section_returns_source_text_and_hash(client, auth, policies, filename):
-    expected = next(s for s in policies.sections if s["filename"] == filename)
+def test_known_policy_section_returns_source_text_and_hash(client, auth, filename):
+    raw = (BACKEND / "knowledge_base" / filename).read_bytes()
+    chunk = raw.decode("utf-8-sig").split("\n## ", 2)[1]
+    heading, _, body = chunk.partition("\n")
+    heading = heading.strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", heading.lower()).strip("-")
+    expected = dict(
+        section_id=filename + "#" + slug,
+        filename=filename,
+        heading=heading,
+        source_hash=hashlib.sha256(raw).hexdigest(),
+        body=body,
+    )
     result = expect(
         client.get("/api/policies/" + quote(expected["section_id"], safe=""), headers=auth(1)),
         200,

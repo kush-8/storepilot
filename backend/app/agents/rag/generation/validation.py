@@ -1,5 +1,6 @@
 """Deterministic citation checks; never trust model-generated source metadata."""
 
+from ...guardrails import PIIAgent, SafetyAgent
 from ..schemas import GeneratedAnswer, RagResult, RetrievedSection
 
 ABSTENTION = "I cannot confirm this from the available policy documents. Please seek human review."
@@ -13,6 +14,14 @@ def validate_answer(draft: GeneratedAnswer, sections: list[RetrievedSection]) ->
     if draft.insufficient_evidence or not draft.statements:
         return abstention(sections)
     available = {item.section_id: item for item in sections}
+    if any(
+        not SafetyAgent().evaluate(PIIAgent().sanitize(statement.text)).allowed
+        for statement in draft.statements
+    ):
+        return RagResult(
+            status="invalid_response",
+            answer="Generated advice failed safety validation. Please seek human review.",
+        )
     cited = list(
         dict.fromkeys(ref for statement in draft.statements for ref in statement.citation_ids)
     )
@@ -25,7 +34,7 @@ def validate_answer(draft: GeneratedAnswer, sections: list[RetrievedSection]) ->
             retrieved_sections=sections,
         )
     answer = "\n".join(
-        statement.text.strip()
+        PIIAgent().sanitize(statement.text.strip()).sanitized_text
         + " "
         + " ".join(f"[{ref}]" for ref in dict.fromkeys(statement.citation_ids))
         for statement in draft.statements

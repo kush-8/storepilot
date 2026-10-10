@@ -1,6 +1,11 @@
 # StorePilot — Ticket and Conversation Data Model
 
-Version: 1.0 | Design specification only; no SQL migration/database changes
+Version: 1.0 | Proposed normalized schema; current runtime uses SQLite JSON records
+
+Current persistence is implemented in `backend/app/storage.py` using `sessions`, `records`,
+`receipts`, `turns` and `rate_limits`. Tickets retain structured steps, citations, evidence,
+escalation and events inside their JSON payload. The tables below describe a future normalized
+layout and are not deployed migrations. See [current workflow report](COPILOT_WORKFLOW_AND_TESTS.md).
 
 ## 1. Persistence boundary
 

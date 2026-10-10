@@ -1,7 +1,6 @@
 # StorePilot Backend
 
-FastAPI implementation of the 16 operations in `openapi.json` (the file referred to as
-`openai.json`). Login, private chat, sanitized history, policy citations, server-held drafts,
+FastAPI implementation of the 16 operations in `openapi.json`. Login, private chat, sanitized history, policy citations, server-held drafts,
 transactional ticket creation, status events, scoped dashboard and analytics are implemented.
 
 ## Start locally
@@ -44,28 +43,38 @@ secret, development uses a process-local key and restart invalidates all existin
   cases retain recorded classification and unknown closure times and cannot be edited. Live mode
   includes newly created application tickets only. No source seeding or double counting occurs.
 
-## Copilot behavior and limits
+## Connected Copilot and Analytics
 
-The current Copilot uses **local deterministic rules and lexical policy retrieval**, not an OpenAI
-model or autonomous multi-agent runtime. `OPENAI_API_KEY`, `OPENAI_MODEL` and model timeout settings
-are reserved for a future model adapter and currently unused. Health `chat=ready` means this local
-Copilot is available. No paid API key is needed to test this implementation.
+The API now uses the existing LangGraph workflow: PII -> Safety -> Triage -> Router ->
+RAG/Data/Both -> validated response and draft. Agents remain separated from HTTP and storage.
+RAG uses Chroma with local ONNX embeddings; model stages use the existing Groq configuration.
+The same DataAgent provides operational SQL evidence and dashboard ticket-count analytics.
 
-The pipeline masks common emails, phone/card numbers and labeled secrets before persistence,
-checks common injection/restricted-data patterns, retrieves Markdown policy sections with hashes,
-classifies common issue categories and returns recommendations, clarification or refusal. Structured
-SKU context enables inventory evidence. Follow-ups reuse sanitized recent conversation context.
-These regex/rule safeguards are bounded prototype behavior, not comprehensive PII detection or
-an evaluated production classifier. Ambiguous payment scope asks a follow-up rather than saving a draft.
+Configure `GROQ_API_KEY` in `.env` and build the policy index before live model use:
 
-Policy instructions are retrieved as data. Recommendations cite actual policy sections; root cause
-is not claimed as confirmed. Tickets may require human review/approval. Saving a ticket records a
-report; it does not contact teams, approve refunds, submit claims, change inventory or assign people.
-Junior/senior employee visibility is implemented; external escalation queues are not integrated.
+```powershell
+uv run python -m app.agents.rag index
+```
 
-Analytics supports authorized ticket counts grouped by store, priority or category, with unresolved
-and explicit P1–P4 selection. Use structured filters for time ranges, status, SKU and store. Other
-questions return `unsupported`. Arbitrary SQL and unrestricted data exports are not available.
+Health reports retrieval/model setup honestly. Guards and login remain available without a model
+key; safe issue requests then return unavailable, with no local-rule fallback. Model availability
+is configured readiness, not a claim that a live provider request succeeded.
+
+Follow-ups reuse bounded sanitized history. Responses verify current policy hashes and preserve
+human review, approval and escalation requirements. Tickets save only after employee confirmation;
+partial evidence and confidence below 0.60 do not produce validated saveable drafts. Saving does
+not notify teams, approve refunds, submit claims, transfer stock or confirm root cause.
+
+Dashboard Analytics calls the same DataAgent with authorized, date-filtered rows from the runtime
+or historical database. Counts are computed over the full matching set before response row limits.
+Only the sanitized question reaches the analytics planning model; private issue text and ticket
+rows do not. Supported groupings are store, category, priority and status. Other questions clarify
+or return unsupported. Current-level visibility and private thread ownership are enforced by API.
+
+See [workflow, endpoint and test report](../docs/COPILOT_WORKFLOW_AND_TESTS.md).
+The full cleaned backend suite passes: **282 tests**. Obsolete orchestration/storage fixtures
+were removed; authentication and policy checks were migrated to the current runtime.
+Live provider quality, frontend journeys and backend evaluation remain separate work.
 
 ## Postman
 
@@ -80,34 +89,19 @@ uv run pytest -q
 uv run ruff check app scripts tests
 ```
 
-Standalone LangChain policy RAG with LangGraph orchestration, Groq, and ChromaDB is implemented in
-[`app/agents/rag`](app/agents/rag/README.md). It is not connected to any API route.
+The [agent workflow](app/agents/workflow/README.md) explains independent agent boundaries
+and standalone CLI usage. The [RAG guide](app/agents/rag/README.md) covers indexing and retrieval.
+Verify the retained source database without the removed operational CSVs:
 
 ```powershell
-uv run python -m app.agents.rag index
-uv run python -m app.agents.rag ask "When does a refund require manager approval?"
+uv run python scripts/verify_database.py
 ```
 
-The index command downloads local embedding weights on first use. The ask command
-loads `GROQ_API_KEY` from `backend/.env`. Run offline RAG tests with
-`uv run pytest tests/test_rag.py`. Remaining agents and additional API endpoints
-are described in `../docs/SYSTEM_DESIGN.md` and `../docs/REQUIREMENTS.md`.
+Verification checks SQLite integrity, foreign keys, row counts against retained import provenance,
+hash format and seeded stock observations. It cannot compare removed CSV contents or recompute
+their original hashes. The snapshot is opened read-only.
 
-The [standalone multi-agent workflow](app/agents/workflow/README.md) now connects
-triage -> router -> RAG/data/both -> response in one LangGraph graph. ChromaDB
-remains the policy vector database; the data agent uses read-only SQLite templates.
-
-```powershell
-uv run python -m app.agents.workflow "Check SKU1001 at ST001 and explain replenishment policy"
-uv run pytest tests/test_workflow.py tests/test_rag.py tests/test_api.py
-```
-
-The API remains disconnected. Authentication, ticket writes, and chat persistence
-are not implemented by this workflow.
-
-The RAG module has its own setup and verification instructions. The database importer
-and source-to-database verification previously ran successfully; the broader
-application roadmap remains unimplemented.
+Regenerate the Postman artifacts after intentional API contract changes:
 
 ```powershell
 uv run python scripts/generate_postman.py

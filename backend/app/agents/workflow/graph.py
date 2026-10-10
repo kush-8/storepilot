@@ -20,9 +20,23 @@ def dispatch(state: WorkflowState) -> list[str]:
 
 def build_workflow(nodes: WorkflowNodes):
     graph = StateGraph(WorkflowState, input_schema=WorkflowInput, output_schema=WorkflowOutput)
-    for name in ("triage_agent", "router_agent", "rag_agent", "data_agent", "compose"):
+    for name in (
+        "pii_agent",
+        "safety_agent",
+        "triage_agent",
+        "router_agent",
+        "rag_agent",
+        "data_agent",
+        "compose",
+    ):
         graph.add_node(name, getattr(nodes, name))
-    graph.add_edge(START, "triage_agent")
+    graph.add_edge(START, "pii_agent")
+    graph.add_edge("pii_agent", "safety_agent")
+    graph.add_conditional_edges(
+        "safety_agent",
+        lambda state: "triage_agent" if state["safety_result"].allowed else "compose",
+        {"triage_agent": "triage_agent", "compose": "compose"},
+    )
     graph.add_conditional_edges(
         "triage_agent",
         lambda state: "compose" if state.get("error") else "router_agent",

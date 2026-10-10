@@ -1,8 +1,9 @@
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, Field
 
 from ..data.schemas import DataResult
+from ..guardrails import PIIResult, SafetyResult
 from ..rag.schemas import RagResult
 from ..router.schemas import RouteDecision
 from ..triage.schemas import TriageResult
@@ -24,11 +25,14 @@ class WorkflowResult(BaseModel):
     data: DataResult | None = None
     human_review_required: bool = False
     limitations: list[str] = Field(default_factory=list)
+    pii_detected: bool = False
+    safety_refusal: bool = False
 
 
 class WorkflowInput(TypedDict):
     question: str
     viewer_employee_id: str | None
+    entity_context: NotRequired[dict[str, str]]
 
 
 class WorkflowState(WorkflowInput, total=False):
@@ -37,6 +41,8 @@ class WorkflowState(WorkflowInput, total=False):
     rag_result: RagResult
     data_result: DataResult
     error: str
+    pii_result: PIIResult
+    safety_result: SafetyResult
     result: WorkflowResult
 
 

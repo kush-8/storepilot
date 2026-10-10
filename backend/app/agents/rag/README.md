@@ -3,7 +3,8 @@
 This module uses LangChain for the RAG pipeline, LangGraph for orchestration,
 Groq (`langchain-groq`) for generation, and **ChromaDB** for the local persistent
 vector database through `langchain-chroma`.
-It is independent of FastAPI: `app/main.py` does not import or call it.
+Its module is independent of FastAPI. The API calls it through the shared LangGraph workflow
+and Copilot service; the standalone CLI remains available.
 It reads only the configured policy Markdown directory, never retail data,
 conversations, tickets, or evaluation answers.
 

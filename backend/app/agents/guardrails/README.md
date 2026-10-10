@@ -1,6 +1,6 @@
 # Standalone PII and Safety agents
 
-These agents are implemented separately from the API. They use local deterministic patterns and standard-library contracts. They have no HTTP, SQLite, model, retrieval or filesystem calls. Existing `app/copilot.py`, routes and manifests are untouched, so requests to the current API still use its earlier checks.
+These agents retain independent modules and standard-library contracts. They have no HTTP, SQLite, model, retrieval or filesystem calls. The LangGraph workflow and API application services now call them before downstream agents, persistence and responses; the API no longer uses the legacy Copilot checks.
 
 ## Folder structure and responsibilities
 
@@ -28,7 +28,7 @@ tests/agents/guardrails/
   test_isolation.py
 ```
 
-Detection does not write data or make safety decisions. Redaction does not classify intent. Safety rules identify signals; the Safety agent applies the decision contract. The API and future graph orchestration will be separate callers when integration is authorized.
+Detection does not write data or make safety decisions. Redaction does not classify intent. Safety rules identify signals; the Safety agent applies the decision contract. The API services and graph are separate callers of these contracts.
 
 ## Use directly
 
@@ -47,7 +47,7 @@ assert safety_result.allowed
 
 Flow: **text → PIIResult → SafetyResult**. The Safety agent requires a `PIIResult`, which helps callers enforce order; it rejects raw-string input. A manually constructed result is not a verified security credential. Callers must use the PII agent for each new message, follow-up, retrieved text and outgoing text they want checked. These modules do not automatically walk stored history or structured payloads.
 
-Both agents are stateless. One safe turn cannot grant permission to a later turn. Do not persist/checkpoint the original input. Later orchestration must use `sanitized_text` and safe metadata and obey the refusal before invoking ordinary tools. There is no LangGraph runtime or API integration in this phase.
+Both agents are stateless. One safe turn cannot grant permission to a later turn. Do not persist/checkpoint the original input. Later orchestration must use `sanitized_text` and safe metadata and obey the refusal before invoking ordinary tools. The workflow now integrates these agents; their own modules still have no LangGraph or API dependency.
 
 ## PII contract and behaviour
 

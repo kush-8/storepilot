@@ -88,9 +88,15 @@ class ReadOnlySqlExecutor:
         )
         if any(isinstance(node, forbidden_nodes) for node in tree.walk()):
             raise SqlValidationError("Only read-only SELECT queries are allowed.")
-        if any(isinstance(node, exp.Star) for node in tree.walk()):
+        if any(
+            isinstance(node, exp.Star) and not isinstance(node.parent, exp.Count)
+            for node in tree.walk()
+        ):
             raise SqlValidationError("SELECT * is not allowed.")
-        tables = {table.name.lower() for table in tree.find_all(exp.Table)}
+        references = list(tree.find_all(exp.Table))
+        if any(table.db or table.catalog for table in references):
+            raise SqlValidationError("Qualified tables cannot bypass scoped temporary views.")
+        tables = {table.name.lower() for table in references}
         if not tables or not tables <= TABLES_BY_EVIDENCE[evidence_type]:
             raise SqlValidationError("Query references a table outside its evidence scope.")
         columns = {column.name.lower() for column in tree.find_all(exp.Column)}
@@ -101,7 +107,8 @@ class ReadOnlySqlExecutor:
         functions = {
             function.sql_name().lower()
             for function in tree.find_all(exp.Func)
-            if function.sql_name().lower() not in {"cast"}
+            if not isinstance(function, (exp.And, exp.Or, exp.Not))
+            and function.sql_name().lower() not in {"cast"}
         }
         if functions - ALLOWED_FUNCTIONS:
             raise SqlValidationError("Query uses an unsupported SQL function.")
@@ -133,6 +140,20 @@ class ReadOnlySqlExecutor:
         normalized = self._validate(sql, evidence_type, parameters)
         with closing(sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
             conn.row_factory = sqlite3.Row
+            # Mandatory windows are enforced before generated SQL, even if it omits predicates.
+            for table, column, first, last in (
+                ("receipts", "receipt_date", "start_date", "end_date"),
+                ("returns_quality", "created_ts", "start", "end"),
+            ):
+                if table in TABLES_BY_EVIDENCE[evidence_type]:
+                    start_value = conn.execute("SELECT quote(?)", (parameters[first],)).fetchone()[
+                        0
+                    ]
+                    end_value = conn.execute("SELECT quote(?)", (parameters[last],)).fetchone()[0]
+                    conn.execute(
+                        f"CREATE TEMP VIEW {table} AS SELECT * FROM main.{table} "
+                        f"WHERE {column}>{start_value} AND {column}<={end_value}"
+                    )
             if evidence_type == "case_summary":
                 if (
                     not viewer_employee_id
@@ -143,14 +164,26 @@ class ReadOnlySqlExecutor:
                 ):
                     raise DataAccessDenied("Case data requires verified employee context.")
                 quoted = conn.execute("SELECT quote(?)", (viewer_employee_id,)).fetchone()[0]
+                start = conn.execute("SELECT quote(?)", (parameters["start"],)).fetchone()[0]
+                end = conn.execute("SELECT quote(?)", (parameters["end"],)).fetchone()[0]
                 conn.execute(f"""CREATE TEMP VIEW visible_support_cases AS
                     SELECT c.created_ts, c.store_id, c.sku, c.category_label,
                            c.priority_label, c.status
                     FROM support_cases c
                     JOIN employee_master creator ON creator.employee_id=c.employee_id
                     JOIN employee_master viewer ON viewer.employee_id={quoted}
-                    WHERE creator.escalation_level <= viewer.escalation_level""")
+                    WHERE creator.escalation_level <= viewer.escalation_level
+                    AND c.created_ts > {start} AND c.created_ts <= {end}""")
             conn.execute("PRAGMA query_only=ON")
+            # Limit expensive generated joins/recursive expressions as well as result size.
+            budget = 0
+
+            def bounded_execution():
+                nonlocal budget
+                budget += 1
+                return int(budget > 1000)
+
+            conn.set_progress_handler(bounded_execution, 1000)
             wrapped = f"SELECT * FROM ({normalized}) AS generated_query LIMIT :__tool_limit"
             bound = {**parameters, "__tool_limit": self.row_limit + 1}
             rows = [dict(row) for row in conn.execute(wrapped, bound)]
