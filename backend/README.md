@@ -80,13 +80,34 @@ uv run pytest -q
 uv run ruff check app scripts tests
 ```
 
-API tests validate returned objects against the supplied JSON schemas and exercise authentication,
-private ownership, level visibility, source immutability, PII masking, clarification/refusal,
-filters, status events, rate limiting and concurrent idempotent creation. Tests isolate app state
-in temporary files. Importer tests require the original `../data` package and are explicitly skipped
-if it is absent. The existing source CSV verifier also requires that package.
+Standalone LangChain policy RAG with LangGraph orchestration, Groq, and ChromaDB is implemented in
+[`app/agents/rag`](app/agents/rag/README.md). It is not connected to any API route.
 
-Regenerate Postman artifacts after changing the workflow:
+```powershell
+uv run python -m app.agents.rag index
+uv run python -m app.agents.rag ask "When does a refund require manager approval?"
+```
+
+The index command downloads local embedding weights on first use. The ask command
+loads `GROQ_API_KEY` from `backend/.env`. Run offline RAG tests with
+`uv run pytest tests/test_rag.py`. Remaining agents and additional API endpoints
+are described in `../docs/SYSTEM_DESIGN.md` and `../docs/REQUIREMENTS.md`.
+
+The [standalone multi-agent workflow](app/agents/workflow/README.md) now connects
+triage -> router -> RAG/data/both -> response in one LangGraph graph. ChromaDB
+remains the policy vector database; the data agent uses read-only SQLite templates.
+
+```powershell
+uv run python -m app.agents.workflow "Check SKU1001 at ST001 and explain replenishment policy"
+uv run pytest tests/test_workflow.py tests/test_rag.py tests/test_api.py
+```
+
+The API remains disconnected. Authentication, ticket writes, and chat persistence
+are not implemented by this workflow.
+
+The RAG module has its own setup and verification instructions. The database importer
+and source-to-database verification previously ran successfully; the broader
+application roadmap remains unimplemented.
 
 ```powershell
 uv run python scripts/generate_postman.py

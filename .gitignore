@@ -15,3 +15,4 @@ backend/database/*.db-wal
 backend/database/*.db-shm
 evaluation/outputs/
 artifacts/
+backend/.cache/
