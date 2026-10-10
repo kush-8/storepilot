@@ -3,6 +3,7 @@ import {
   Menu,
   Store,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { STORES } from '../data/mockData';
 
@@ -12,6 +13,8 @@ export default function Header({
   selectedStore,
   setSelectedStore,
   setMobileOpen,
+  currentUser,
+  onLogout,
 }) {
   const getTabTitle = () => {
     switch (activeTab) {
@@ -109,6 +112,35 @@ export default function Header({
           >
             <Sparkles size={16} />
             <span>Launch Copilot</span>
+          </button>
+        )}
+
+        {/* Current Employee Badge */}
+        {currentUser && (
+          <div className="header-employee-pill" title={`Signed in as ${currentUser.name} (${currentUser.role})`}>
+            <div
+              className="header-emp-avatar"
+              style={currentUser.avatarBg ? { background: currentUser.avatarBg } : undefined}
+            >
+              {currentUser.initials}
+            </div>
+            <div className="header-emp-info">
+              <span className="header-emp-name">{currentUser.name}</span>
+              <span className="header-emp-badge">{currentUser.id}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Header Sign Out Action */}
+        {onLogout && (
+          <button
+            className="header-signout-btn"
+            onClick={onLogout}
+            title="Sign out of employee terminal"
+            aria-label="Sign out"
+          >
+            <LogOut size={15} />
+            <span className="signout-label">Sign Out</span>
           </button>
         )}
       </div>
