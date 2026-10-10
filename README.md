@@ -2,7 +2,17 @@
 
 Planning documents and two independent application codebases for the HCLTech hackathon.
 
-Agreed target stack: React/Vite frontend; Python/uv/FastAPI backend; LangGraph orchestration; Chroma policy vector retrieval; SQLite retail data; Docker Compose packaging. The documents reflect this selection. Dependency migration and container configuration await implementation.
+Agreed target stack: React/Vite frontend; Python/uv/FastAPI backend; LangGraph orchestration; Chroma policy vector retrieval; SQLite retail data; Docker Compose packaging. RAG dependencies are installed and locked; container configuration awaits implementation.
+
+Standalone RAG is now implemented using LangChain, LangGraph, Groq, and ChromaDB. See
+[RAG setup and usage](backend/app/agents/rag/README.md). It has a Python interface
+and CLI; no API endpoint is connected to it. Container configuration and the
+remaining application features are still planned.
+
+The [standalone multi-agent workflow](backend/app/agents/workflow/README.md) now
+runs triage, router, policy RAG, and a read-only data agent in one LangGraph entry
+point, including parallel RAG/data execution when both are needed. It has no API
+connection and does not create tickets.
 
 ## Current implementation
 
@@ -15,7 +25,7 @@ Agreed target stack: React/Vite frontend; Python/uv/FastAPI backend; LangGraph o
 
 Target product: Dashboard combines ticket overview and Analytics; Copilot is a chatbot for reporting issues, asking follow-ups, recommending steps, and generating persistent tickets. Ticket access uses creator current level <= viewer current level. Requested login validates Employee ID + Store ID and issues JWT. Evaluation is backend-only.
 
-Login/JWT, employee authorization, product screens, LangGraph agents, writable ticket storage, Analytics, evaluation runner, and executable automated tests are specified but not implemented. Implementation remains paused. The existing starter dashboard is unscoped and does not implement the revised employee-access contract.
+Login/JWT, employee authorization, product screens, the remaining agents, writable ticket storage, Analytics, and the evaluation runner are specified but not implemented. Standalone RAG and its offline tests are implemented. The existing starter dashboard is unscoped and does not implement the revised employee-access contract.
 
 ## Directory layout
 
@@ -61,7 +71,9 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 API documentation: <http://127.0.0.1:8000/docs>. Health: <http://127.0.0.1:8000/api/health>.
 
-For the future model integration, copy `backend/.env.example` to `backend/.env` and supply your own model and API key. Current endpoints do not require model access.
+For standalone RAG, set `GROQ_API_KEY` in `backend/.env`; optional `GROQ_MODEL`
+and retrieval settings are documented in `backend/.env.example`. Current endpoints
+do not require model access.
 
 ## Run the frontend
 

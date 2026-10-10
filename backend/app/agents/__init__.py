@@ -1,1 +1,1 @@
-"""Standalone backend agents; importing this package does not start services."""
+"""Standalone agents; importing this package does not start the API."""

@@ -6,6 +6,9 @@ import {
   CheckCircle2,
   Database,
   Save,
+  User,
+  LogOut,
+  BadgeCheck,
 } from 'lucide-react';
 import { STORES } from '../data/mockData';
 
@@ -13,6 +16,8 @@ export default function SettingsView({
   selectedStore,
   setSelectedStore,
   onResetDemoData,
+  currentUser,
+  onLogout,
 }) {
   const [pciGuardrail, setPciGuardrail] = useState(true);
   const [managerApprovalRule, setManagerApprovalRule] = useState(true);
@@ -148,7 +153,7 @@ export default function SettingsView({
               <input
                 type="text"
                 className="form-input"
-                defaultValue="Harpreet Singh (Ops Lead)"
+                value={currentUser ? `${currentUser.name} (${currentUser.role})` : 'Harpreet Singh (Ops Lead)'}
                 readOnly
               />
             </div>
@@ -167,6 +172,70 @@ export default function SettingsView({
             </div>
           </div>
         </div>
+
+        {/* Authenticated Employee Terminal Session Card */}
+        {currentUser && (
+          <div className="settings-card">
+            <div className="settings-card-header">
+              <div className="settings-header-icon bg-indigo-subtle">
+                <User size={20} className="text-indigo" />
+              </div>
+              <div>
+                <h3 className="settings-title">Active Employee Terminal Session</h3>
+                <p className="settings-subtitle">Authenticated staff identity and store access credentials</p>
+              </div>
+            </div>
+
+            <div className="settings-body">
+              <div className="emp-session-profile-card">
+                <div
+                  className="emp-session-avatar"
+                  style={currentUser.avatarBg ? { background: currentUser.avatarBg } : undefined}
+                >
+                  {currentUser.initials}
+                </div>
+                <div className="emp-session-details">
+                  <div className="emp-session-name-row">
+                    <h4 className="emp-session-name">{currentUser.name}</h4>
+                    <span className="badge-accent">{currentUser.id}</span>
+                  </div>
+                  <p className="emp-session-role">{currentUser.role} • {currentUser.department}</p>
+                  <p className="emp-session-sub">
+                    <span>Email: <strong>{currentUser.email}</strong></span> • 
+                    <span> Shift: <strong>{currentUser.shift}</strong></span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="sys-info-box" style={{ marginTop: '16px' }}>
+                <div className="sys-info-item">
+                  <span className="sys-key">Security Clearance:</span>
+                  <span className="sys-val" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <BadgeCheck size={14} className="text-success" />
+                    {currentUser.securityClearance}
+                  </span>
+                </div>
+                <div className="sys-info-item">
+                  <span className="sys-key">Assigned Home Store:</span>
+                  <span className="sys-val">{currentUser.storeName} ({currentUser.storeId})</span>
+                </div>
+                <div className="sys-info-item">
+                  <span className="sys-key">Terminal Sign-In Time:</span>
+                  <span className="sys-val">{currentUser.loginTimestamp || 'Active Session'}</span>
+                </div>
+              </div>
+
+              {onLogout && (
+                <div style={{ marginTop: '16px' }}>
+                  <button className="btn-signout-card" onClick={onLogout}>
+                    <LogOut size={16} />
+                    <span>Sign Out / Switch Employee Account</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Prototype Reset Card */}
         <div className="settings-card">

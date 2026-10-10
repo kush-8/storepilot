@@ -8,6 +8,7 @@ import {
   FileText,
   Settings,
   ShieldCheck,
+  LogOut,
   X,
 } from 'lucide-react';
 
@@ -18,6 +19,8 @@ export default function Sidebar({
   setMobileOpen,
   openCasesCount = 4,
   lowStockCount = 5,
+  currentUser,
+  onLogout,
 }) {
   const navItems = [
     {
@@ -144,13 +147,29 @@ export default function Sidebar({
         {/* Sidebar Footer / User Profile */}
         <div className="sidebar-footer">
           <div className="user-profile-card">
-            <div className="user-avatar">
-              <span>HS</span>
+            <div
+              className="user-avatar"
+              style={currentUser?.avatarBg ? { background: currentUser.avatarBg } : undefined}
+            >
+              <span>{currentUser?.initials || 'HS'}</span>
+              <span className="online-shift-dot" title="Active shift session"></span>
             </div>
             <div className="user-info">
-              <span className="user-name">Harpreet Singh</span>
-              <span className="user-role">Operations Lead • ST002</span>
+              <span className="user-name">{currentUser?.name || 'Harpreet Singh'}</span>
+              <span className="user-role">
+                {currentUser?.role || 'Operations Lead'} • {currentUser?.storeId || 'ST002'}
+              </span>
             </div>
+            {onLogout && (
+              <button
+                className="sidebar-logout-btn"
+                onClick={onLogout}
+                title="Sign out of employee terminal"
+                aria-label="Sign out"
+              >
+                <LogOut size={16} />
+              </button>
+            )}
           </div>
 
           <div className="responsible-ai-pill">
