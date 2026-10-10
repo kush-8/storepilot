@@ -18,6 +18,8 @@ class ImportTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         self.db = self.directory / "retail.db"
         self.source = ROOT.parent / "data"
+        if not (self.source / "store_master.csv").exists():
+            self.skipTest("Original ../data CSV package is absent; importer tests require it")
 
     def test_rebuild_has_same_counts_and_rejects_implicit_overwrite(self):
         result = build_database(self.source, self.db)
@@ -28,7 +30,9 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(result["tables"], rebuilt["tables"])
         with sqlite3.connect(self.db) as connection:
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM import_manifest").fetchone()[0], 9)
+            self.assertEqual(
+                connection.execute("SELECT COUNT(*) FROM import_manifest").fetchone()[0], 9
+            )
 
     def test_invalid_foreign_key_leaves_existing_database_intact(self):
         build_database(self.source, self.db)
