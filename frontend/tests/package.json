@@ -1,0 +1,15 @@
+{
+  "name": "storepilot-browser-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --config=playwright.config.ts",
+    "test:list": "playwright test --config=playwright.config.ts --list",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "24.13.3",
+    "typescript": "6.0.2"
+  }
+}
