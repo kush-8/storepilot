@@ -1,0 +1,17 @@
+.venv/
+.tools/
+.uv-cache/
+.npm-cache/
+node_modules/
+dist/
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+backend/database/.import-*.db
+backend/database/*.db-journal
+backend/database/*.db-wal
+backend/database/*.db-shm
+evaluation/outputs/
+artifacts/

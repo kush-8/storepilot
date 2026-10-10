@@ -1,0 +1,2790 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StorePilot API — Proposed Contract",
+    "version": "2.0.0",
+    "description": "Documentation only. No endpoint, login/JWT, agent, ticket migration, or test implementation is authorized by this file. Two product pages: Dashboard and chat Copilot. Backend-only evaluation has no frontend/public endpoint. Ticket reads/aggregates/evidence enforce creator current level <= viewer current level. Prototype login validates Employee ID + assigned Store ID and issues JWT; IDs are not secret credentials."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8000",
+      "description": "Proposed local FastAPI base URL; not a statement that these routes exist"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Authentication"
+    },
+    {
+      "name": "Context"
+    },
+    {
+      "name": "Copilot"
+    },
+    {
+      "name": "Tickets"
+    },
+    {
+      "name": "Dashboard"
+    },
+    {
+      "name": "Evidence"
+    }
+  ],
+  "security": [
+    {
+      "BearerJWT": []
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Public capability readiness",
+        "operationId": "getHealth",
+        "tags": [
+          "Health"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready or degraded capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required data services unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Validate Employee ID and assigned Store ID; issue JWT (planned)",
+        "operationId": "login",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "description": "Prototype identity lookup; IDs are not secret credentials. Generic invalid-login error. No password/refresh-token flow.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed JWT and server-resolved employee context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Revoke current JWT session",
+        "operationId": "logout",
+        "tags": [
+          "Authentication"
+        ],
+        "responses": {
+          "204": {
+            "description": "Current session revoked; clear private frontend state"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Current employee context from validated JWT and directory",
+        "operationId": "getMe",
+        "tags": [
+          "Authentication"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeContext"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/stores": {
+      "get": {
+        "summary": "Affected-location and dashboard-filter options",
+        "operationId": "listStores",
+        "tags": [
+          "Context"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/conversations": {
+      "post": {
+        "summary": "Create owner-only Copilot conversation",
+        "operationId": "createConversation",
+        "tags": [
+          "Copilot"
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}": {
+      "get": {
+        "summary": "Read sanitized conversation owned by current employee",
+        "operationId": "getConversation",
+        "tags": [
+          "Copilot"
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-only sanitized history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/messages": {
+      "post": {
+        "summary": "Guarded chat turn: clarify, recommend, refuse, or prepare draft",
+        "operationId": "sendMessage",
+        "tags": [
+          "Copilot"
+        ],
+        "responses": {
+          "200": {
+            "description": "Validated assistant response; possibly a server-held draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTurn"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "description": "Every turn runs PII -> Safety -> Router -> RAG/Data/Both as needed. client_message_id identifies retries in this owner conversation; conflicting reused content returns 409. No ticket is saved by this operation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ticket-drafts/{draft_id}": {
+      "get": {
+        "summary": "Owner-only validated draft revision",
+        "operationId": "getTicketDraft",
+        "tags": [
+          "Copilot"
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-held draft; generation_allowed governs save eligibility",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Draft"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tickets": {
+      "post": {
+        "summary": "Generate a persistent ticket from a reviewed server draft",
+        "operationId": "createTicket",
+        "tags": [
+          "Tickets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Existing ticket returned for an idempotent retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketCreated"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New ticket committed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketCreate"
+              }
+            }
+          }
+        },
+        "description": "Creator comes from JWT, fields from server draft. Atomic save includes recommendations, citations, evidence, event and receipt. Same key/body replays same ticket; different body returns 409. Saving does not approve operational actions."
+      },
+      "get": {
+        "summary": "List only tickets from creators at current employee level or below",
+        "operationId": "listTickets",
+        "tags": [
+          "Tickets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "data_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "live",
+                "historical_snapshot"
+              ],
+              "default": "live"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "last24h",
+                "last7d",
+                "last30d",
+                "all"
+              ],
+              "default": "last7d"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+            }
+          },
+          {
+            "name": "sku",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^SKU[0-9]+$"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Open",
+                "In Progress",
+                "Closed"
+              ]
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "P1",
+                "P2",
+                "P3",
+                "P4"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "POS and Payments",
+                "Inventory and Replenishment",
+                "Pricing and Promotions",
+                "Returns and Refunds",
+                "Vendor and Supply Chain",
+                "Product Quality and Safety",
+                "Customer Service",
+                "Other or Security"
+              ]
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Use both start and end together, without window; bounded (start,end]. Historical end cannot exceed the fixed anchor."
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Use both start and end together, without window; bounded (start,end]. Historical end cannot exceed the fixed anchor."
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "description": "Authorization applies before search/count/pagination. total is scoped and filtered; never unrestricted."
+      }
+    },
+    "/api/tickets/{ticket_id}": {
+      "get": {
+        "summary": "Read permitted ticket report, evidence and events",
+        "operationId": "getTicket",
+        "tags": [
+          "Tickets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Ticket passing current creator/viewer level rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          }
+        ]
+      }
+    },
+    "/api/tickets/{ticket_id}/status": {
+      "patch": {
+        "summary": "Creator-only ticket lifecycle change",
+        "operationId": "updateTicketStatus",
+        "tags": [
+          "Tickets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Status and event committed atomically",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusUpdate"
+              }
+            }
+          }
+        },
+        "description": "Read-scope check precedes creator-only mutation check. Expected version enforces concurrency. Open -> In Progress/Closed; In Progress -> Open/Closed; Closed -> Open requires reason. No refund/transfer/claim approval."
+      }
+    },
+    "/api/dashboard": {
+      "get": {
+        "summary": "Combined dashboard aggregates over visible filtered tickets",
+        "operationId": "getDashboard",
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "data_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "live",
+                "historical_snapshot"
+              ],
+              "default": "live"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "last24h",
+                "last7d",
+                "last30d",
+                "all"
+              ],
+              "default": "last7d"
+            }
+          },
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+            }
+          },
+          {
+            "name": "sku",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^SKU[0-9]+$"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Open",
+                "In Progress",
+                "Closed"
+              ]
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "P1",
+                "P2",
+                "P3",
+                "P4"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "POS and Payments",
+                "Inventory and Replenishment",
+                "Pricing and Promotions",
+                "Returns and Refunds",
+                "Vendor and Supply Chain",
+                "Product Quality and Safety",
+                "Customer Service",
+                "Other or Security"
+              ]
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Use both start and end together, without window; bounded (start,end]. Historical end cannot exceed the fixed anchor."
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Use both start and end together, without window; bounded (start,end]. Historical end cannot exceed the fixed anchor."
+          }
+        ],
+        "description": "Same current-level predicate and time/filter semantics as ticket list and Analytics. live uses captured server-now; historical_snapshot uses imported cases and fixed challenge anchor."
+      }
+    },
+    "/api/dashboard/analytics": {
+      "post": {
+        "summary": "Ask Analytics agent a question within authorized dashboard scope",
+        "operationId": "askDashboardAnalytics",
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "Grounded answer, clarification, refusal or supported limitation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/Timeout"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyticsRequest"
+              }
+            }
+          }
+        },
+        "description": "PII -> Safety -> Router -> Analytics -> scoped Data and optional RAG. Owner-only follow-up context; no ticket creation. Never expose hidden-ticket rows/counts/summaries. Model emits typed intent, not arbitrary SQL."
+      }
+    },
+    "/api/policies/{section_id}": {
+      "get": {
+        "summary": "Resolve a citation through the known policy catalog",
+        "operationId": "getPolicySection",
+        "tags": [
+          "Evidence"
+        ],
+        "responses": {
+          "200": {
+            "description": "Existing indexed policy section",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicySection"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "section_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerJWT": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Planned signed JWT. Verify fixed algorithm, signature, iss/aud/iat/exp/jti, server session state, current employee assignment; fetch current level separately. Token retained in memory by frontend."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing/invalid/expired/revoked JWT, invalid directory pair or changed employee assignment; generic safe error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bearer authentication challenge"
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Visible resource but current employee lacks mutation permission",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource absent or inaccessible; identical safe error shape",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Stale draft/version, invalid transition, changed idempotent input, or duplicate draft generation",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Malformed request or unsupported identifier/filter; no raw sensitive values",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Request rate exceeded; obey Retry-After",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Seconds until retry"
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "Required service unavailable; no fabricated result",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Timeout": {
+        "description": "Bounded model/retrieval request timed out",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "EmployeeContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "employee_id",
+          "assigned_store_id",
+          "role",
+          "escalation_level"
+        ],
+        "properties": {
+          "employee_id": {
+            "type": "string",
+            "pattern": "^E[0-9]{4}$"
+          },
+          "assigned_store_id": {
+            "type": "string",
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+          },
+          "role": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "escalation_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "employee_id",
+          "store_id"
+        ],
+        "properties": {
+          "employee_id": {
+            "type": "string",
+            "pattern": "^E[0-9]{4}$"
+          },
+          "store_id": {
+            "type": "string",
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+          }
+        },
+        "examples": [
+          {
+            "employee_id": "E0001",
+            "store_id": "ST008"
+          }
+        ]
+      },
+      "LoginResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "expires_at",
+          "employee"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "token_type": {
+            "type": "string",
+            "const": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "const": 1800
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/EmployeeContext"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "capabilities"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "unavailable"
+            ]
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source_database",
+              "application_database",
+              "chat",
+              "retrieval"
+            ],
+            "properties": {
+              "source_database": {
+                "type": "string",
+                "enum": [
+                  "ready",
+                  "unavailable"
+                ]
+              },
+              "application_database": {
+                "type": "string",
+                "enum": [
+                  "ready",
+                  "unavailable"
+                ]
+              },
+              "chat": {
+                "type": "string",
+                "enum": [
+                  "ready",
+                  "unavailable"
+                ]
+              },
+              "retrieval": {
+                "type": "string",
+                "enum": [
+                  "ready",
+                  "unavailable"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Store": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "store_id",
+          "store_name",
+          "city",
+          "region",
+          "location_type"
+        ],
+        "properties": {
+          "store_id": {
+            "type": "string",
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+          },
+          "store_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "region": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "location_type": {
+            "type": "string",
+            "enum": [
+              "store",
+              "warehouse"
+            ]
+          }
+        }
+      },
+      "StoreList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Store"
+            }
+          }
+        }
+      },
+      "ConversationCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {
+          "affected_store_id": {
+            "type": "string",
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+          }
+        }
+      },
+      "Conversation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "conversation_id",
+          "owner_employee_id",
+          "affected_store_id",
+          "created_at",
+          "updated_at",
+          "messages"
+        ],
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_employee_id": {
+            "type": "string",
+            "pattern": "^E[0-9]{4}$"
+          },
+          "affected_store_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "message_id",
+          "role",
+          "content",
+          "created_at",
+          "pii_checked"
+        ],
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pii_checked": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MessageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "content",
+          "client_message_id"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "client_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [],
+            "properties": {
+              "affected_store_id": {
+                "type": "string",
+                "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+              },
+              "sku": {
+                "type": "string",
+                "pattern": "^SKU[0-9]+$"
+              },
+              "register_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          }
+        },
+        "examples": [
+          {
+            "content": "The card reader stopped working.",
+            "client_message_id": "123e4567-e89b-42d3-a456-426614174000",
+            "context": {
+              "affected_store_id": "ST003"
+            }
+          }
+        ]
+      },
+      "Citation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "section_id",
+          "filename",
+          "heading",
+          "source_hash"
+        ],
+        "properties": {
+          "section_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "heading": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "source_hash": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "Evidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "record_ids",
+          "summary",
+          "query_template_id"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "record_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "query_template_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          }
+        }
+      },
+      "Escalation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "required",
+          "team",
+          "channel",
+          "sla_minutes",
+          "reason",
+          "human_approval_required"
+        ],
+        "properties": {
+          "required": {
+            "type": "boolean"
+          },
+          "team": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "sla_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "human_approval_required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GuardrailFlags": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pii_checked",
+          "pii_detected",
+          "safety_refusal",
+          "human_review_required"
+        ],
+        "properties": {
+          "pii_checked": {
+            "type": "boolean"
+          },
+          "pii_detected": {
+            "type": "boolean"
+          },
+          "safety_refusal": {
+            "type": "boolean"
+          },
+          "human_review_required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Draft": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "draft_id",
+          "conversation_id",
+          "revision",
+          "title",
+          "description",
+          "affected_store_id",
+          "sku",
+          "register_id",
+          "category",
+          "priority",
+          "confidence",
+          "recommendations",
+          "citations",
+          "evidence",
+          "escalation",
+          "review_required",
+          "approval_required",
+          "validation_status",
+          "generation_allowed",
+          "expires_at"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "affected_store_id": {
+            "type": "string",
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^SKU[0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "register_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "POS and Payments",
+              "Inventory and Replenishment",
+              "Pricing and Promotions",
+              "Returns and Refunds",
+              "Vendor and Supply Chain",
+              "Product Quality and Safety",
+              "Customer Service",
+              "Other or Security"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "escalation": {
+            "$ref": "#/components/schemas/Escalation"
+          },
+          "review_required": {
+            "type": "boolean"
+          },
+          "approval_required": {
+            "type": "boolean"
+          },
+          "validation_status": {
+            "type": "string",
+            "enum": [
+              "validated",
+              "needs_clarification",
+              "needs_review",
+              "unavailable"
+            ]
+          },
+          "generation_allowed": {
+            "type": "boolean"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ChatTurn": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "conversation_id",
+          "assistant_message",
+          "result_type",
+          "route",
+          "follow_up_question",
+          "category",
+          "priority",
+          "recommendations",
+          "citations",
+          "evidence",
+          "escalation",
+          "guardrails",
+          "ticket_draft",
+          "limitations"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assistant_message": {
+            "$ref": "#/components/schemas/Message"
+          },
+          "result_type": {
+            "type": "string",
+            "enum": [
+              "clarification",
+              "recommendation",
+              "refusal",
+              "dashboard_redirect",
+              "unsupported",
+              "unavailable"
+            ]
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "RAG",
+              "Data",
+              "Both",
+              "Clarify",
+              "Refuse",
+              "Dashboard",
+              "Unsupported"
+            ]
+          },
+          "follow_up_question": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Priority"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "escalation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Escalation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/GuardrailFlags"
+          },
+          "ticket_draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Draft"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          }
+        }
+      },
+      "Category": {
+        "type": "string",
+        "enum": [
+          "POS and Payments",
+          "Inventory and Replenishment",
+          "Pricing and Promotions",
+          "Returns and Refunds",
+          "Vendor and Supply Chain",
+          "Product Quality and Safety",
+          "Customer Service",
+          "Other or Security"
+        ]
+      },
+      "Priority": {
+        "type": "string",
+        "enum": [
+          "P1",
+          "P2",
+          "P3",
+          "P4"
+        ]
+      },
+      "TicketCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "draft_id",
+          "draft_revision"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "draft_revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "TicketSummary": {
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "title",
+          "description",
+          "created_by_employee_id",
+          "creator_current_level",
+          "affected_store_id",
+          "sku",
+          "category",
+          "priority",
+          "status",
+          "confidence",
+          "review_required",
+          "approval_required",
+          "approval_status",
+          "origin",
+          "priority_provenance",
+          "policy_validation_status",
+          "created_at",
+          "updated_at",
+          "closed_at",
+          "version"
+        ],
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "created_by_employee_id": {
+            "type": "string",
+            "pattern": "^E[0-9]{4}$"
+          },
+          "creator_current_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          },
+          "affected_store_id": {
+            "type": "string",
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^SKU[0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "POS and Payments",
+              "Inventory and Replenishment",
+              "Pricing and Promotions",
+              "Returns and Refunds",
+              "Vendor and Supply Chain",
+              "Product Quality and Safety",
+              "Customer Service",
+              "Other or Security"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Open",
+              "In Progress",
+              "Closed"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "review_required": {
+            "type": "boolean"
+          },
+          "approval_required": {
+            "type": "boolean"
+          },
+          "approval_status": {
+            "type": "string",
+            "enum": [
+              "not_required",
+              "pending"
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "copilot",
+              "historical_import"
+            ]
+          },
+          "priority_provenance": {
+            "type": "string",
+            "enum": [
+              "policy_validated",
+              "historical_label"
+            ]
+          },
+          "policy_validation_status": {
+            "type": "string",
+            "enum": [
+              "validated",
+              "unvalidated"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "TicketEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "event_id",
+          "event_type",
+          "actor_employee_id",
+          "old_status",
+          "new_status",
+          "note",
+          "created_at"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "created",
+              "status_changed",
+              "review_flagged"
+            ]
+          },
+          "actor_employee_id": {
+            "type": "string",
+            "pattern": "^E[0-9]{4}$"
+          },
+          "old_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TicketStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "new_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TicketStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TicketStatus": {
+        "type": "string",
+        "enum": [
+          "Open",
+          "In Progress",
+          "Closed"
+        ]
+      },
+      "TicketDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TicketSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "register_id",
+              "recommendations",
+              "citations",
+              "evidence",
+              "escalation",
+              "events"
+            ],
+            "properties": {
+              "register_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 80
+              },
+              "recommendations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                }
+              },
+              "citations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Citation"
+                }
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                }
+              },
+              "escalation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Escalation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TicketEvent"
+                }
+              }
+            }
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "TicketCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ticket",
+          "idempotent_replay"
+        ],
+        "properties": {
+          "ticket": {
+            "$ref": "#/components/schemas/TicketDetail"
+          },
+          "idempotent_replay": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VisibilityScope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "viewer_employee_id",
+          "viewer_current_level",
+          "rule"
+        ],
+        "properties": {
+          "viewer_employee_id": {
+            "type": "string",
+            "pattern": "^E[0-9]{4}$"
+          },
+          "viewer_current_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          },
+          "rule": {
+            "type": "string",
+            "const": "creator_current_level <= viewer_current_level"
+          }
+        }
+      },
+      "Filters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "historical_snapshot"
+            ],
+            "default": "live"
+          },
+          "window": {
+            "type": "string",
+            "enum": [
+              "last24h",
+              "last7d",
+              "last30d",
+              "all"
+            ],
+            "default": "last7d"
+          },
+          "store_id": {
+            "type": "string",
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+          },
+          "sku": {
+            "type": "string",
+            "pattern": "^SKU[0-9]+$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Open",
+              "In Progress",
+              "Closed"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "POS and Payments",
+              "Inventory and Replenishment",
+              "Pricing and Promotions",
+              "Returns and Refunds",
+              "Vendor and Supply Chain",
+              "Product Quality and Safety",
+              "Customer Service",
+              "Other or Security"
+            ]
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ResolvedQueryContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "filters",
+          "time_window",
+          "source_versions"
+        ],
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/VisibilityScope"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "time_window": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start",
+              "end",
+              "interval",
+              "timezone"
+            ],
+            "properties": {
+              "start": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "end": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "interval": {
+                "type": "string",
+                "const": "(start,end]"
+              },
+              "timezone": {
+                "type": "string",
+                "const": "Asia/Kolkata"
+              }
+            }
+          },
+          "source_versions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TicketList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "context"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "context": {
+            "$ref": "#/components/schemas/ResolvedQueryContext"
+          }
+        }
+      },
+      "CountBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "count"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Dashboard": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "context",
+          "metrics",
+          "by_priority",
+          "by_category",
+          "by_store",
+          "data_revision"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/ResolvedQueryContext"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "total",
+              "open",
+              "in_progress",
+              "closed",
+              "unresolved",
+              "p1_unresolved",
+              "p2_unresolved"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "open": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "in_progress": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "closed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unresolved": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "p1_unresolved": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "p2_unresolved": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "by_priority": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucket"
+            }
+          },
+          "by_category": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucket"
+            }
+          },
+          "by_store": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucket"
+            }
+          },
+          "data_revision": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "AnalyticsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "filters": {
+            "$ref": "#/components/schemas/Filters"
+          },
+          "analytics_thread_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "examples": [
+          {
+            "question": "Show unresolved P1 and P2 tickets by store.",
+            "filters": {
+              "data_mode": "live",
+              "window": "last24h"
+            }
+          }
+        ]
+      },
+      "AnalyticsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "analytics_thread_id",
+          "result_type",
+          "answer",
+          "follow_up_question",
+          "intent",
+          "context",
+          "columns",
+          "rows",
+          "total_rows",
+          "truncated",
+          "query_template_ids",
+          "citations",
+          "evidence",
+          "guardrails",
+          "limitations"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "analytics_thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "result_type": {
+            "type": "string",
+            "enum": [
+              "answer",
+              "clarification",
+              "refusal",
+              "unsupported",
+              "unavailable"
+            ]
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "follow_up_question": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "intent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "context": {
+            "$ref": "#/components/schemas/ResolvedQueryContext"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "label",
+                "value_type"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "value_type": {
+                  "type": "string",
+                  "enum": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "datetime"
+                  ]
+                }
+              }
+            }
+          },
+          "rows": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          },
+          "total_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "query_template_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/GuardrailFlags"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          }
+        }
+      },
+      "StatusUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "expected_version"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "Open",
+              "In Progress",
+              "Closed"
+            ]
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      },
+      "PolicySection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "section_id",
+          "filename",
+          "heading",
+          "body",
+          "source_hash"
+        ],
+        "properties": {
+          "section_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "heading": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "source_hash": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    }
+  },
+  "x-implementation-status": "documentation-only",
+  "x-login": {
+    "fields": [
+      "employee_id",
+      "store_id"
+    ],
+    "assignment_validation": "employee_master exact pair",
+    "algorithm": "HS256",
+    "issuer": "storepilot",
+    "audience": "storepilot-api",
+    "lifetime_seconds": 1800,
+    "clock_skew_seconds": 30,
+    "claims": [
+      "sub",
+      "iss",
+      "aud",
+      "iat",
+      "exp",
+      "jti",
+      "store_id"
+    ],
+    "refresh_tokens": false,
+    "revocation": "server session state by jti digest"
+  },
+  "x-visibility-rule": "creator.current_escalation_level <= viewer.current_escalation_level",
+  "x-time-modes": {
+    "live": "Actual server UTC timestamps; captured now endpoint. (start,end].",
+    "historical_snapshot": "Imported support cases at or before 2026-10-10T12:00:00+05:30. Evaluation reads immutable sources.",
+    "custom_range": "Provide start and end together without window; validate ordering and historical cutoff."
+  }
+}
