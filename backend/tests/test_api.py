@@ -1,34 +1,30 @@
-import sqlite3
-from pathlib import Path
+"""Contract-facing readiness and protected dashboard regression tests."""
 
-from fastapi.testclient import TestClient
+import hashlib
 
-from app.main import app
-
-client = TestClient(app)
+from tests.support import expect
 
 
-def test_health_and_dashboard_use_database(monkeypatch):
-    database = Path(__file__).resolve().parents[1] / "database/retail.db"
-    monkeypatch.setenv("DATABASE_PATH", str(database))
-    response = client.get("/api/health")
-    assert response.status_code == 200
-    assert response.json()["total_rows"] == 2970
-    response = client.get("/api/dashboard")
-    assert response.status_code == 200
-    data = response.json()
-    with sqlite3.connect(database) as connection:
-        expected = connection.execute(
-            "SELECT COUNT(*) FROM support_cases WHERE status IN ('Open', 'In Progress') "
-            "AND created_ts <= ?", ("2026-10-10 12:00:00",),
-        ).fetchone()[0]
-    assert data["unresolved_cases"] == expected
-    for key in ("priority_distribution", "category_distribution", "region_distribution"):
-        assert sum(row["count"] for row in data[key]) == expected
+def test_public_health_matches_contract_without_exposing_ticket_information(client):
+    body = expect(client.get("/api/health"), 200, "Health")
+    assert "employee" not in body and "tickets" not in body
 
 
-def test_missing_database_returns_unavailable_without_creating_file(tmp_path, monkeypatch):
-    path = tmp_path / "missing.db"
-    monkeypatch.setenv("DATABASE_PATH", str(path))
-    assert client.get("/api/health").status_code == 503
-    assert not path.exists()
+def test_missing_source_database_is_unavailable_without_creating_it(
+    databases, monkeypatch, tmp_path, request
+):
+    missing = tmp_path / "missing.db"
+    monkeypatch.setenv("DATABASE_PATH", str(missing))
+    client = request.getfixturevalue("client")
+    expect(client.get("/api/health"), 503, "Health")
+    assert not missing.exists()
+
+
+def test_starter_dashboard_must_not_remain_public(client):
+    expect(client.get("/api/dashboard"), 401, "Error")
+
+
+def test_tests_leave_source_inputs_unchanged(client, fixture_hashes):
+    client.get("/api/health")
+    for path, digest in fixture_hashes.items():
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
