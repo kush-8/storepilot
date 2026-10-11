@@ -97,14 +97,20 @@ def query(filters: Filters, employee, search=None):
         if window != "all"
         else None
     )
-    if filters.data_mode == "historical_snapshot":
-        items = historical()
-    else:
+    items = []
+    if filters.data_mode in {"historical_snapshot", "combined"}:
+        # Keep the source snapshot cutoff even when live tickets use the current time.
+        items.extend(
+            ticket
+            for ticket in historical()
+            if datetime.fromisoformat(ticket["created_at"]) <= ANCHOR
+        )
+    if filters.data_mode in {"live", "combined"}:
         with state() as db:
-            items = [
+            items.extend(
                 json.loads(r[0])
                 for r in db.execute("SELECT payload FROM records WHERE kind='ticket'")
-            ]
+            )
     items = visible(items, employee)
     matching = []
     for ticket in items:

@@ -6,3 +6,4 @@ __pycache__/
 .env
 database/storepilot.db*
 database/postman-smoke.db*
+evaluation/outputs/

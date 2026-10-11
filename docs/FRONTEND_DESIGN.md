@@ -6,7 +6,7 @@ Version: 2.0 | React + TypeScript + Vite | Status: design only
 
 App name: **StorePilot**. Subtitle: **Retail issues, guided and tracked**. Punjab Sports Mart appears as retailer context where useful, not the application name.
 
-Two navigation items: Dashboard and Copilot. Dashboard combines ticket overview and analytics. Copilot is a chatbot dedicated to issue reporting and ticket generation. Evaluation is backend-only: no employee screen, navigation entry, evaluation widgets, or judge inspector in the frontend.
+Three navigation items: Dashboard, Copilot, and Analytics/Query. Dashboard contains the ticket overview; Analytics/Query contains ticket questions and results. Copilot is a chatbot dedicated to issue reporting and ticket generation. Evaluation is backend-only: no employee screen, navigation entry, evaluation widgets, or judge inspector in the frontend.
 
 Frontend displays validated safe results from FastAPI. Agent graph, SQL, model credentials, Chroma internals, and evaluation files remain backend concerns.
 
@@ -29,17 +29,17 @@ Provide theme-aware equivalents for dark mode. Priority always has a text label.
 
 ## 3. Application shell
 
-Desktop: compact sidebar, flexible content, header with employee identity, role, and read-only escalation level. Mobile: brand/profile header and two accessible navigation controls; stack content.
+Desktop: compact navigation, flexible content, header with employee identity, role, and read-only escalation level. Mobile: brand/profile header and three accessible navigation controls; stack content.
 
 Show a scope label: **Tickets from employees at your level or below**. Do not imply a managerial hierarchy based on role names. Profile level comes from backend identity, not a user-editable authorization setting.
 
-Before the two-page workspace, a login view collects Employee ID and assigned Store ID. Backend validates the pair and issues JWT. Keep the token in memory, clear private data on logout/expiry, and return to login. No password field is requested. Login and JWT remain unimplemented.
+Before the three-tab workspace, a login view collects Employee ID and assigned Store ID. Backend validates the pair and issues a bearer token. Clear private data on logout/expiry and return to login. No password field is requested.
 
-## 4. Dashboard: overview and analytics together
+## 4. Dashboard and Analytics/Query
 
 ```text
 StorePilot                 Employee / role / level
-Dashboard | Copilot
+Dashboard | Copilot | Analytics/Query
 
 Dashboard             Time window / store / priority / status
 Tickets from your level or below
@@ -47,23 +47,25 @@ Tickets from your level or below
 Open tickets       P1 urgent       P2 review       Resolved
 Priority/category distributions and trend (when data supports it)
 
-Tickets                                      Ask StorePilot
-ID / issue / priority / status / store        Analytics question
-Click a row -> ticket detail                  Answer + evidence/table
-                                              Suggested follow-up
+Recent tickets
+ID / issue / priority / status / store
+Click a row -> ticket detail
+
+Analytics/Query        Data source / time window / store / status
+Analytics question -> Answer + result table / clarification
 ```
 
-Cards, distributions, table, and analytics share the same backend authorization and filter context. Counts must not be chain-wide totals if the employee cannot see the underlying tickets. Operational inventory/receipt evidence is labelled separately from ticket workload.
+Cards and the ticket table share Dashboard filters. Analytics/Query has its own filters with the same backend authorization rules. Counts must not be chain-wide totals if the employee cannot see the underlying tickets. Operational inventory/receipt evidence is labelled separately from ticket workload.
 
 Default data mode uses live application tickets. Historical replay is an explicit source/time option and displays the fixed anchor. Never label static inventory snapshots as real-time telemetry.
 
-The Ask StorePilot panel is embedded in the dashboard, expanded or docked alongside the ticket list on desktop and stacked below it on mobile. Examples: “Open high-priority tickets by store”, “Which issue categories are recurring?”, “Why is this SKU unavailable?” Responses show short findings, requested window, authorized result table/chart, evidence and limitations. Selecting a result narrows the ticket list or opens permitted detail.
+The ticket query panel appears only in Analytics/Query. Examples: “Open high-priority tickets by store” and “Count tickets by category”. Responses show short findings, an authorized result table, or a clarification question. Changing filters clears the previous result.
 
 ## 5. Chat Copilot
 
 One main conversation column with an optional desktop ticket-draft side panel. On mobile, the draft is an inline chat card. The composer stays at the end of the conversation rather than a separate left-hand issue form.
 
-Empty state: **What happened in your store?** Offer concise issue examples. Employee/store session context is prefilled; affected store/SKU/register details can be added or asked conversationally.
+Empty state: **What happened in your store?** Offer concise issue examples. The reporting store is fixed to the current employee assignment and displayed read-only. SKU/register details can be added or asked conversationally; another-store issue asks for clarification and cannot authorize a ticket.
 
 Turn types:
 
@@ -122,7 +124,7 @@ Render text without dangerouslySetInnerHTML. Citation links resolve through a tr
 1. Requested Employee ID + Store ID/JWT identity boundary, two-page shell, scoped dashboard/ticket APIs.
 2. Chat thread/composer, guardrail-driven follow-ups, grounded recommendation rendering.
 3. Server draft, persistent Generate ticket, saved detail and dashboard refresh.
-4. Embedded analytics panel with scoped results and drill-down.
+4. Separate Analytics/Query tab with scoped results and clarification follow-ups.
 5. Accessibility, mobile/error-state checks, deployment packaging.
 
 No frontend evaluation work is planned.

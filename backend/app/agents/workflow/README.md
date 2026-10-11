@@ -21,7 +21,10 @@ flowchart TD
     V --> U[Employee explicitly saves ticket]
     U --> DB[Application SQLite database]
     A[Dashboard analytics question] --> P2[PII and Safety]
-    P2 --> D2[Same DataAgent: bounded analytics plan]
+    P2 --> D2[Same DataAgent: LLM-generated analytics SELECT]
+    D2 --> T2[Validated read-only analytics SQL tool]
+    T2 --> E2[Final LLM explanation: at most 20 words]
+    E2 --> UI[Supporting results first, explanation last]
     DB --> F[Current employee scope and date filters]
     F --> D2
 ```
@@ -36,8 +39,11 @@ flowchart TD
 - `data/agent.py`: operational SQL planning and dashboard analytics on the same agent instance.
 - `data/sql_tool.py`: SQL AST checks, table/column/function restrictions, read-only SQLite,
   row/execution caps, mandatory historical windows, current-level authorization for cases.
-- `data/analytics.py`: bounded count/group/filter plan and deterministic aggregation; no arbitrary
-  analytics SQL. Ticket text, identities and rows are not sent to the planning model.
+- `data/analytics.py`: structured analytics SQL plans, explicit bindings and result contracts.
+- `data/analytics_sql_tool.py`: validated SQL against isolated, pre-scoped public data; read-only
+  execution with row and work limits. Ticket text, identities and rows never reach the planner.
+- `data/analytics_answer.py`: final explanation of verified public results, capped at 20 words;
+  row-reference, numeric-claim and output guardrail checks with a brief fallback.
 - `workflow/graph.py`: guardrails, conditional dispatch, parallel specialists and one join.
 - `workflow/response.py`: safe result composition; partial evidence requires human review.
 - `app/services/copilot.py`: public ChatTurn adaptation, citation hashes, priority/refund rules,
@@ -68,6 +74,10 @@ A missing key/provider/index produces unavailable/partial results, never a fabri
 `RetailWorkflow.ask(question, viewer_employee_id=..., entity_context=...)` returns a typed
 `WorkflowResult`. Every graph invocation starts with PII then Safety; a refusal runs no models
 or tools. The triage stage precedes routing because the existing router consumes structured triage.
+Triage uses ten hand-written question/JSON demonstrations in `triage/prompts.py`, covering all
+eight categories, intent types, priority levels, explicit IDs, historical filters, clarification
+and restricted requests. They are fixed examples, not retrieved historical case labels. Example
+outputs are validated with `TriageResult`, and the current question remains the final human message.
 Both specialists run in one parallel superstep and compose once. Input/model/retrieved/output
 text is sanitized at its boundaries. Regex safeguards remain bounded prototype detection.
 
@@ -78,8 +88,11 @@ these boundaries even when generated SQL omits them. Missing inventory is unknow
 
 Dashboard analytics uses the same DataAgent's `analyze` method with tickets already scoped by
 `app/reporting.py`. Live mode reads persisted Copilot tickets; historical mode reads imported
-support cases. It supports counts by store, category, priority or status, optional status/priority
-selection, plus the structured dashboard filters and private clarification threads.
+support cases; combined mode includes both. The LLM generates SQL for rankings, trends,
+comparisons and operational data questions. A separate tool executes it, then a final LLM explains
+the verified results in at most 20 words. The frontend places supporting results before that
+explanation. Policies use the existing RAG agent. Structured filters and
+private clarification threads are retained. See [analytics workflow](../../../../docs/ANALYTICS_WORKFLOW.md).
 
 The graph returns guidance. Explicit `POST /api/tickets` commits an eligible draft. It does not
 approve refunds, notify people, execute transfers or change inventory. Partial/invalid/low-confidence

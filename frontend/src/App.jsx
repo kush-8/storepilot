@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import * as api from './services/api';
 import CopilotWorkspace from './components/CopilotWorkspace';
 import OperationsWorkspace from './components/OperationsWorkspace';
+import AnalyticsWorkspace from './components/AnalyticsWorkspace';
 import './App.css';
 
 export default function App() {
@@ -50,9 +51,10 @@ export default function App() {
   </form></main>;
   return <div className="workspace">
     <header className="topbar"><span className="brand">StorePilot</span><span className="identity">{user.employee_id} · {user.role} · {user.assigned_store_id}</span><button disabled={busy} onClick={signOut}>Sign out</button></header>
-    <nav className="tabs" aria-label="Main navigation">{['Dashboard', 'Copilot', 'Tickets'].map(name => <button key={name} aria-current={tab === name ? 'page' : undefined} onClick={() => { setTab(name); setError(''); }}>{name}</button>)}</nav>
+    <nav className="tabs" aria-label="Main navigation">{['Dashboard', 'Copilot', 'Analytics/Query'].map(name => <button key={name} aria-current={tab === name ? 'page' : undefined} onClick={() => { setTab(name); setError(''); }}>{name}</button>)}</nav>
     <main className="content"><h1>{tab}</h1>{error && <p className="error" role="alert">{error}</p>}
-      {tab !== 'Copilot' && <OperationsWorkspace key={tab} ticketsOnly={tab === 'Tickets'} user={user} stores={stores} revision={revision} onError={onError} onCopilot={() => setTab('Copilot')} />}
+      {tab === 'Dashboard' && <OperationsWorkspace user={user} stores={stores} revision={revision} onError={onError} onCopilot={() => setTab('Copilot')} />}
+      {tab === 'Analytics/Query' && <AnalyticsWorkspace stores={stores} onError={onError} />}
       <div hidden={tab !== 'Copilot'}><CopilotWorkspace user={user} stores={stores} onError={onError} onSaved={() => setRevision(value => value + 1)} /></div>
     </main>
   </div>;

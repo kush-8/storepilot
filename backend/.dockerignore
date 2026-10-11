@@ -1,0 +1,14 @@
+.venv
+.cache
+.env
+.env.*
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+tests
+evaluation
+postman
+database/*
+!database/retail.db

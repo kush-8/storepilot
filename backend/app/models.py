@@ -57,7 +57,7 @@ class StatusUpdate(Input):
 
 
 class Filters(Input):
-    data_mode: Literal["live", "historical_snapshot"] = "live"
+    data_mode: Literal["live", "historical_snapshot", "combined"] = "live"
     window: Literal["last24h", "last7d", "last30d", "all"] | None = None
     store_id: str | None = Field(default=None, pattern=r"^(ST[0-9]{3}|WH[0-9]{3})$")
     sku: str | None = Field(default=None, pattern=r"^SKU[0-9]+$")

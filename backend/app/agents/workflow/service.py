@@ -1,5 +1,6 @@
 from ..data.agent import DataAgent
-from ..data.analytics import AnalyticsPlan
+from ..data.analytics import SqlAnalyticsPlan
+from ..data.analytics_answer import GeneratedAnalyticsAnswer
 from ..data.schemas import GeneratedSqlPlan
 from ..data.sql_tool import ReadOnlySqlExecutor
 from ..models import structured_model
@@ -18,6 +19,7 @@ class RetailWorkflow:
     def __init__(self, nodes: WorkflowNodes):
         self.graph = build_workflow(nodes)
         self.data = nodes.data
+        self.data.policy_agent = nodes.rag
 
     def ask(
         self,
@@ -47,7 +49,8 @@ def create_workflow(settings: WorkflowSettings | None = None) -> RetailWorkflow:
                 structured_model(settings.rag, GeneratedSqlPlan),
                 ReadOnlySqlExecutor(settings.database_path, settings.row_limit),
                 settings.event_anchor,
-                analytics_model=structured_model(settings.rag, AnalyticsPlan),
+                analytics_model=structured_model(settings.rag, SqlAnalyticsPlan),
+                analytics_answer_model=structured_model(settings.rag, GeneratedAnalyticsAnswer),
             ),
         )
     )

@@ -24,7 +24,7 @@ export const test = base.extend<{ api: State }>({
         viewer_employee_id: 'E9001', viewer_current_level: 1,
         rule: 'creator_current_level <= viewer_current_level',
       },
-      filters: { data_mode: 'live', window: 'last7d' },
+      filters: { data_mode: 'combined', window: 'all', status: 'Open' },
       time_window: { start: null, end: now, interval: '(start,end]', timezone: 'Asia/Kolkata' },
       source_versions: { retail: 'fixture-source', application: 'fixture-version' },
     }
@@ -45,8 +45,8 @@ export const test = base.extend<{ api: State }>({
       'Use approved alternate tender options if permitted.']
     const draft = {
       draft_id: draftId, conversation_id: conversationId, revision: 1,
-      title: 'Store-wide card payment outage', description: 'All registers at ST003 fail.',
-      affected_store_id: 'ST003', sku: null, register_id: null,
+      title: 'Store-wide card payment outage', description: 'All registers at ST001 fail.',
+      affected_store_id: 'ST001', sku: null, register_id: null,
       category: 'POS and Payments', priority: 'P1', confidence: 0.9,
       recommendations: steps, citations: [citation], evidence: [], escalation,
       review_required: true, approval_required: true, validation_status: 'validated',
@@ -54,7 +54,7 @@ export const test = base.extend<{ api: State }>({
     }
     const ticket = {
       ticket_id: 'SP-TEST-001', title: draft.title, description: draft.description,
-      created_by_employee_id: 'E9001', creator_current_level: 1, affected_store_id: 'ST003',
+      created_by_employee_id: 'E9001', creator_current_level: 1, affected_store_id: 'ST001',
       sku: null, register_id: null, category: 'POS and Payments', priority: 'P1',
       status: 'Open', confidence: 0.9, review_required: true, approval_required: true,
       approval_status: 'pending', origin: 'copilot', priority_provenance: 'policy_validated',
@@ -138,7 +138,7 @@ export const test = base.extend<{ api: State }>({
         })
       }
       if (path.startsWith('/api/conversations/')) return send(200, {
-        conversation_id: conversationId, owner_employee_id: 'E9001', affected_store_id: 'ST003',
+        conversation_id: conversationId, owner_employee_id: 'E9001', affected_store_id: 'ST001',
         created_at: now, updated_at: now, messages,
       })
       if (path.startsWith('/api/ticket-drafts/')) return send(200, draft)
@@ -195,7 +195,7 @@ export async function prepareDraft(page: Page) {
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   await expect(page.getByText(/one register affected.*all registers/i)).toBeVisible()
   await page.getByRole('textbox', { name: 'Message', exact: true })
-    .fill('All registers at ST003 cannot take card payments.')
+    .fill('All registers at ST001 cannot take card payments.')
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Generate ticket', exact: true })).toBeVisible()
 }

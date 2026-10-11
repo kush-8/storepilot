@@ -223,6 +223,9 @@
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         },
         "requestBody": {
@@ -234,7 +237,8 @@
               }
             }
           }
-        }
+        },
+        "description": " Reporting is restricted to the current employee assigned store; foreign-store context or drafts return 403. Cross-store issue text asks for clarification without creating a draft."
       }
     },
     "/api/conversations/{conversation_id}": {
@@ -319,6 +323,9 @@
           },
           "504": {
             "$ref": "#/components/responses/Timeout"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         },
         "parameters": [
@@ -332,7 +339,7 @@
             }
           }
         ],
-        "description": "Every turn runs PII -> Safety -> Router -> RAG/Data/Both as needed. client_message_id identifies retries in this owner conversation; conflicting reused content returns 409. No ticket is saved by this operation.",
+        "description": "Every turn runs PII -> Safety -> Router -> RAG/Data/Both as needed. client_message_id identifies retries in this owner conversation; conflicting reused content returns 409. No ticket is saved by this operation. Reporting is restricted to the current employee assigned store; foreign-store context or drafts return 403. Cross-store issue text asks for clarification without creating a draft.",
         "requestBody": {
           "required": true,
           "content": {
@@ -374,6 +381,9 @@
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         },
         "parameters": [
@@ -386,7 +396,8 @@
               "format": "uuid"
             }
           }
-        ]
+        ],
+        "description": " Reporting is restricted to the current employee assigned store; foreign-store context or drafts return 403. Cross-store issue text asks for clarification without creating a draft."
       }
     },
     "/api/tickets": {
@@ -431,6 +442,9 @@
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         },
         "parameters": [
@@ -455,7 +469,7 @@
             }
           }
         },
-        "description": "Creator comes from JWT, fields from server draft. Atomic save includes recommendations, citations, evidence, event and receipt. Same key/body replays same ticket; different body returns 409. Saving does not approve operational actions."
+        "description": "Creator comes from JWT, fields from server draft. Atomic save includes recommendations, citations, evidence, event and receipt. Same key/body replays same ticket; different body returns 409. Saving does not approve operational actions. Reporting is restricted to the current employee assigned store; foreign-store context or drafts return 403. Cross-store issue text asks for clarification without creating a draft."
       },
       "get": {
         "summary": "List only tickets from creators at current employee level or below",
@@ -493,10 +507,12 @@
               "type": "string",
               "enum": [
                 "live",
-                "historical_snapshot"
+                "historical_snapshot",
+                "combined"
               ],
               "default": "live"
-            }
+            },
+            "description": "combined includes existing snapshot cases plus new tickets; live includes new tickets only; historical_snapshot includes snapshot cases only. The frontend defaults to combined with window=all; API omission retains live."
           },
           {
             "name": "window",
@@ -771,10 +787,12 @@
               "type": "string",
               "enum": [
                 "live",
-                "historical_snapshot"
+                "historical_snapshot",
+                "combined"
               ],
               "default": "live"
-            }
+            },
+            "description": "combined includes existing snapshot cases plus new tickets; live includes new tickets only; historical_snapshot includes snapshot cases only. The frontend defaults to combined with window=all; API omission retains live."
           },
           {
             "name": "window",
@@ -925,7 +943,7 @@
             }
           }
         },
-        "description": "PII -> Safety -> Router -> Analytics -> scoped Data and optional RAG. Owner-only follow-up context; no ticket creation. Never expose hidden-ticket rows/counts/summaries. Model emits typed intent, not arbitrary SQL."
+        "description": "PII and Safety checks precede analytics planning. The same DataAgent uses an LLM to generate a single SQLite SELECT and named bindings; a separate validated read-only tool executes it over approved retail columns and already authorized ticket metadata. Supports ticket rankings/trends, stock, products, vendors, deliveries, returns and escalation rules. Policy questions use citation-validated RAG. Current escalation levels and selected store/SKU/date filters are enforced before SQL execution. Owner-only follow-up threads; no ticket creation or operational writes. Responses include readable answers, actual result rows, sources, limitations and truncation."
       }
     },
     "/api/policies/{section_id}": {
@@ -1314,7 +1332,8 @@
         "properties": {
           "affected_store_id": {
             "type": "string",
-            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$"
+            "pattern": "^(ST[0-9]{3}|WH[0-9]{3})$",
+            "description": "If provided, must equal the authenticated employee current assigned_store_id; omitted derives that store from the directory."
           }
         }
       },
@@ -2252,7 +2271,8 @@
             "type": "string",
             "enum": [
               "live",
-              "historical_snapshot"
+              "historical_snapshot",
+              "combined"
             ],
             "default": "live"
           },
@@ -2652,7 +2672,8 @@
           },
           "total_rows": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Number of returned result rows. When truncated is true, this does not claim full query cardinality; aggregate counts are computed before the result-row cap."
           },
           "truncated": {
             "type": "boolean"
@@ -2785,6 +2806,8 @@
   "x-time-modes": {
     "live": "Actual server UTC timestamps; captured now endpoint. (start,end].",
     "historical_snapshot": "Imported support cases at or before 2026-10-10T12:00:00+05:30. Evaluation reads immutable sources.",
-    "custom_range": "Provide start and end together without window; validate ordering and historical cutoff."
-  }
+    "custom_range": "Provide start and end together without window; validate ordering and historical cutoff.",
+    "combined": "Imported cases through the historical cutoff plus persisted live tickets. Uses server now for the overall window and applies identical employee visibility and filters to both sources."
+  },
+  "x-reporting-store-rule": "ticket.affected_store_id == creator.current_assigned_store_id at report creation; ticket read visibility remains escalation-level based."
 }

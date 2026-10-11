@@ -11,7 +11,15 @@ from pydantic import ValidationError
 from ..guardrails import PIIAgent, SafetyAgent
 from ..router.schemas import RouteDecision
 from ..triage.schemas import TriageResult
-from .analytics import ANALYTICS_PROMPT, AnalyticsPlan, AnalyticsResult, aggregate
+from .analytics import (
+    ANALYTICS_PROMPT,
+    AnalyticsPlan,
+    AnalyticsResult,
+    aggregate,
+    grounded_parameters,
+)
+from .analytics_answer import AnalyticsAnswerer
+from .analytics_sql_tool import AnalyticsSqlExecutor, create_analytics_sql_tool
 from .prompts import SQL_PROMPT, SQL_SCHEMA
 from .schemas import DataEvidence, DataResult, GeneratedSqlPlan
 from .sql_tool import (
@@ -31,6 +39,7 @@ class DataAgent:
         executor: ReadOnlySqlExecutor,
         anchor: datetime,
         analytics_model: Runnable | None = None,
+        analytics_answer_model: Runnable | None = None,
     ):
         if anchor.utcoffset() is None:
             raise ValueError("Event anchor must include a timezone.")
@@ -38,8 +47,19 @@ class DataAgent:
         self.executor = executor
         self.anchor = anchor.astimezone(timezone(timedelta(hours=5, minutes=30)))
         self.analytics_chain = ANALYTICS_PROMPT | analytics_model if analytics_model else None
+        self.analytics_executor = AnalyticsSqlExecutor(
+            executor.path, self.anchor, executor.row_limit
+        )
+        self.policy_agent = None
+        self.analytics_answerer = (
+            AnalyticsAnswerer(analytics_answer_model)
+            if analytics_answer_model is not None
+            else None
+        )
 
-    def analyze(self, question: str, *, authorized_tickets: list[dict]) -> AnalyticsResult:
+    def analyze(
+        self, question: str, *, authorized_tickets: list[dict], context: dict | None = None
+    ) -> AnalyticsResult:
         """Caller supplies rows already scoped using current directory levels and dates.
 
         Only the sanitized question reaches the model; aggregation never sends ticket
@@ -57,25 +77,88 @@ class DataAgent:
         try:
             if self.analytics_chain is None:
                 raise RuntimeError("Analytics planner is not configured")
-            plan = AnalyticsPlan.model_validate(
-                self.analytics_chain.invoke({"question": pii.sanitized_text})
-            )
-            result = aggregate(plan, authorized_tickets)
+            planning_context = {
+                key: (context or {}).get(key, {}) for key in ("filters", "time_window")
+            }
+            for attempt in range(2):
+                plan = AnalyticsPlan.model_validate(
+                    self.analytics_chain.invoke(
+                        {
+                            "question": pii.sanitized_text,
+                            "context": json.dumps(planning_context),
+                        }
+                    )
+                )
+                try:
+                    result = self._run_analytics_plan(
+                        plan, pii.sanitized_text, authorized_tickets, context or {}
+                    )
+                    break
+                except (SqlValidationError, sqlite3.Error) as exc:
+                    if attempt:
+                        raise
+                    # One correction attempt using schema/error, never results or private rows.
+                    planning_context["correction"] = {
+                        "previous_sql": plan.sql,
+                        "error": str(exc)[:300],
+                        "instruction": "Correct the SELECT and all parameter bindings; obey scope.",
+                    }
             clean = PIIAgent().sanitize(result.answer)
             if not SafetyAgent().evaluate(clean).allowed:
                 raise ValueError("Unsafe planner response")
             result.answer = clean.sanitized_text
             if result.follow_up:
                 result.follow_up = result.answer
-            result.pii_detected = pii.pii_detected
+            result.pii_detected = result.pii_detected or pii.pii_detected
             return result
         except Exception as exc:
             logger.warning("Analytics planning failed (%s)", type(exc).__name__)
             return AnalyticsResult(
                 status="unavailable",
-                answer="Ticket analytics is unavailable. Please retry.",
+                answer="Analytics could not complete that query. Please rephrase or retry.",
                 pii_detected=pii.pii_detected,
             )
+
+    def _run_analytics_plan(self, plan, question, tickets, context) -> AnalyticsResult:
+        if plan.intent == "retail_query":
+            if not plan.sql:
+                raise SqlValidationError("The planner omitted SQL")
+            tool = create_analytics_sql_tool(self.analytics_executor, tickets, context)
+            parameters = {
+                **grounded_parameters(question, context, self.executor.row_limit),
+                **{
+                    binding.name: int(binding.value)
+                    if isinstance(binding.value, float) and binding.value.is_integer()
+                    else binding.value
+                    for binding in plan.parameters
+                },
+            }
+            result = AnalyticsResult.model_validate_json(
+                tool.invoke({"sql": plan.sql, "parameters": parameters})
+            )
+            if self.analytics_answerer is not None:
+                return self.analytics_answerer.explain(
+                    question, result, sql=plan.sql, parameters=parameters, context=context
+                )
+            return result
+        if plan.intent == "policy":
+            if self.policy_agent is None:
+                raise RuntimeError("Policy retrieval is not configured")
+            policy = self.policy_agent.ask(question)
+            return AnalyticsResult(
+                status="answer" if policy.status == "answered" else "unavailable",
+                intent="policy" if policy.status == "answered" else None,
+                answer=policy.answer,
+                citations=[
+                    {
+                        key: getattr(citation, key)
+                        for key in ("section_id", "filename", "heading", "source_hash")
+                    }
+                    for citation in policy.citations
+                ],
+                limitations=["Policy guidance is grounded in the indexed policy documents."],
+            )
+        return aggregate(plan, tickets)
 
     def _parameters(self, triage: TriageResult, plan: RouteDecision) -> dict:
         start = self.anchor - timedelta(days=plan.lookback_days)

@@ -18,7 +18,7 @@ Ticket detail is a drawer or inline panel reached from Dashboard or the chat rec
 
 Employee enters Employee ID + assigned Store ID -> backend validates the directory pair -> issues JWT -> protected requests verify JWT/session -> backend looks up current employee level -> fetch authorized dashboard metrics and tickets. Missing identity/level shows an access error, never an unrestricted dataset or zero-valued success state. Login/JWT is implemented in the backend.
 
-Show employee role/level as read-only session context. Token expiry/logout clears private frontend data and returns to login. The affected issue store can differ from the login assignment. IDs are not secret credentials; this is the requested prototype identity flow.
+Show employee role/level and reporting store as read-only session context. Token expiry/logout clears private frontend data and returns to login. Employees report issues only for their current assigned store; the backend rejects other-store context and drafts. IDs are not secret credentials; this is the requested prototype identity flow.
 
 The confirmed rule is creator current level <= viewer current level. Apply it before all dashboard calculations and query responses, including ticket details and related evidence.
 

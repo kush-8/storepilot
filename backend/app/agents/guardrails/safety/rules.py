@@ -40,7 +40,8 @@ _BYPASS = re.compile(
     re.I,
 )
 _HANDLING = re.compile(
-    r"\b(?:write|record|store|log|save|collect|ask for)\b[^\n.!?;]{0,80}(?:" + _RESTRICTED + ")",
+    r"\b(?:write|record|store|log|save|collect|ask for)\b(?:\s+|:\s*)"
+    r"[^\n.!?;]{0,80}(?:" + _RESTRICTED + ")",
     re.I,
 )
 _SUSPICIOUS = re.compile(r"\bsuspicious request\b[^\n.!?;]{0,60}\brestricted\b", re.I)

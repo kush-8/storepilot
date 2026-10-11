@@ -250,6 +250,120 @@ def test_authorization_and_owner_isolation(client):
         assert result["total"] == expected
 
 
+@pytest.mark.parametrize("viewer", [1, 2, 3, 4])
+def test_combined_tickets_keep_existing_cases_and_new_tickets_in_the_same_scope(
+    client, level_tickets, viewer
+):
+    headers, _ = level_tickets[viewer]
+    with sqlite3.connect(ROOT / "database/retail.db") as db:
+        expected_open = (
+            db.execute(
+                "SELECT COUNT(*) FROM support_cases c JOIN employee_master e "
+                "ON e.employee_id=c.employee_id WHERE e.escalation_level<=? "
+                "AND c.created_ts<=? AND c.status='Open'",
+                (viewer, "2026-10-10 12:00:00"),
+            ).fetchone()[0]
+            + viewer
+        )
+    filters = dict(data_mode="combined", window="all", status="Open")
+    listing = contract(client.get("/api/tickets", headers=headers, params=filters), "TicketList")
+    assert listing["total"] == expected_open
+    assert all(row["creator_current_level"] <= viewer for row in listing["items"])
+    assert all(row["status"] == "Open" for row in listing["items"])
+    assert {row["origin"] for row in listing["items"]} == {"copilot", "historical_import"}
+    assert all(
+        datetime.fromisoformat(row["created_at"])
+        <= datetime.fromisoformat("2026-10-10T12:00:00+05:30")
+        for row in listing["items"]
+        if row["origin"] == "historical_import"
+    )
+    metrics = contract(client.get("/api/dashboard", headers=headers, params=filters), "Dashboard")
+    assert metrics["metrics"]["total"] == expected_open
+    analytics = contract(
+        client.post(
+            "/api/dashboard/analytics",
+            headers=headers,
+            json=dict(question="Count open tickets by store", filters=filters),
+        ),
+        "AnalyticsResponse",
+    )
+    assert sum(row["count"] for row in analytics["rows"]) == expected_open
+    page = contract(
+        client.get("/api/tickets", headers=headers, params={**filters, "limit": 1}),
+        "TicketList",
+    )
+    second = contract(
+        client.get("/api/tickets", headers=headers, params={**filters, "limit": 1, "offset": 1}),
+        "TicketList",
+    )
+    assert page["items"][0]["ticket_id"] != second["items"][0]["ticket_id"]
+    assert page["total"] == second["total"] == expected_open
+
+
+def test_saved_ticket_session_and_retry_receipt_survive_a_new_application_client(client):
+    headers = login(client)
+    _, proposal, _ = draft(client, headers)
+    created = contract(
+        save_draft(client, headers, proposal, "persistent-save"), "TicketCreated", 201
+    )
+    ticket = created["ticket"]
+    with TestClient(app) as restarted:
+        recovered = contract(
+            restarted.get(f"/api/tickets/{ticket['ticket_id']}", headers=headers), "TicketDetail"
+        )
+        assert recovered == ticket
+        replay = contract(
+            save_draft(restarted, headers, proposal, "persistent-save"), "TicketCreated"
+        )
+        assert replay["idempotent_replay"] and replay["ticket"] == ticket
+
+
+def test_combined_views_refresh_escalation_scope_after_directory_changes(
+    client, level_tickets, tmp_path, monkeypatch
+):
+    copied = tmp_path / "retail.db"
+    shutil.copyfile(ROOT / "database/retail.db", copied)
+    monkeypatch.setenv("DATABASE_PATH", str(copied))
+    headers = level_tickets[4][0]
+    with sqlite3.connect(copied) as db:
+        employee = db.execute(
+            "SELECT employee_id FROM employee_master WHERE escalation_level=4 "
+            "ORDER BY employee_id LIMIT 1"
+        ).fetchone()[0]
+        db.execute("UPDATE employee_master SET escalation_level=1 WHERE employee_id=?", (employee,))
+        expected = (
+            db.execute(
+                "SELECT COUNT(*) FROM support_cases c JOIN employee_master e "
+                "ON e.employee_id=c.employee_id WHERE e.escalation_level<=1 "
+                "AND c.created_ts<=? AND c.status='Open'",
+                ("2026-10-10 12:00:00",),
+            ).fetchone()[0]
+            + 2
+        )
+    filters = dict(data_mode="combined", window="all", status="Open")
+    listing = contract(client.get("/api/tickets", headers=headers, params=filters), "TicketList")
+    assert listing["total"] == expected
+    assert all(row["creator_current_level"] == 1 for row in listing["items"])
+    assert listing["context"]["scope"]["viewer_current_level"] == 1
+    own_ticket = level_tickets[4][1][0]
+    assert any(row["ticket_id"] == own_ticket for row in listing["items"])
+    for level in (2, 3):
+        contract(
+            client.get(f"/api/tickets/{level_tickets[level][1][0]}", headers=headers), "Error", 404
+        )
+    metrics = contract(client.get("/api/dashboard", headers=headers, params=filters), "Dashboard")
+    assert metrics["metrics"]["total"] == expected
+    analytics = contract(
+        client.post(
+            "/api/dashboard/analytics",
+            headers=headers,
+            json=dict(question="Count open tickets by store", filters=filters),
+        ),
+        "AnalyticsResponse",
+    )
+    assert sum(row["count"] for row in analytics["rows"]) == expected
+
+
 def test_guardrails_and_clarification(client):
     headers = login(client)
     cid = client.post("/api/conversations", headers=headers, json={}).json()["conversation_id"]

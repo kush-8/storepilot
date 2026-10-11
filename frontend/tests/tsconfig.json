@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["playwright.config.ts", "api-fixture.ts", "storepilot.spec.ts"]
+  "include": ["*.ts"]
 }

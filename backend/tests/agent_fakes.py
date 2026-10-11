@@ -69,7 +69,7 @@ def offline_workflow(database):
             else "Pricing and Promotions"
             if "price" in question.lower()
             else "Returns and Refunds"
-            if "refund" in question.lower()
+            if re.search(r"refund|return", question, re.I)
             else "Recall and Safety"
             if re.search(r"injur|unsafe|handlebar", question, re.I)
             else "POS Card Reader Runbook"
@@ -108,6 +108,41 @@ def offline_workflow(database):
         }
 
     def analytics(text):
+        if "out of stock" in text.lower():
+            store = re.search(r"\b(?:ST|WH)\d{3}\b", text)
+            return dict(
+                intent="retail_query",
+                sql=(
+                    "SELECT i.store_id,i.sku,p.name AS product_name,i.on_hand FROM inventory i "
+                    "JOIN product_master p ON p.sku=i.sku WHERE i.on_hand<=0 "
+                    + ("AND i.store_id=:store_id " if store else "")
+                    + "ORDER BY i.store_id,i.sku"
+                ),
+                parameters={"store_id": store.group()} if store else {},
+            )
+        if "most frequent issue" in text.lower():
+            store = re.search(r"\b(?:ST|WH)\d{3}\b", text)
+            return dict(
+                intent="retail_query",
+                sql=(
+                    "SELECT category,COUNT(*) AS tickets FROM visible_tickets "
+                    + ("WHERE affected_store_id=:store_id " if store else "")
+                    + "GROUP BY category ORDER BY tickets DESC,category LIMIT 1"
+                ),
+                parameters={"store_id": store.group()} if store else {},
+            )
+        if "replenishment" in text.lower():
+            return dict(
+                intent="retail_query",
+                sql=(
+                    "SELECT store_id,sku,on_hand,reorder_point FROM inventory "
+                    "WHERE on_hand<=reorder_point ORDER BY store_id,sku"
+                ),
+            )
+        if "return policy" in text.lower():
+            return dict(intent="policy")
+        if "Summarize my tickets" in text and "by store" not in text.lower():
+            return dict(intent="clarify", follow_up="How should the ticket counts be grouped?")
         group = (
             "affected_store_id"
             if "store" in text.lower()
@@ -121,6 +156,39 @@ def offline_workflow(database):
             status="Open" if "open" in text.lower() else None,
         )
 
+    def analytics_answer(text):
+        facts = json.loads(text.split("Evidence: ")[1])
+        query = json.loads(text.split("Verified query and bindings: ")[1].splitlines()[0])
+        rows = facts["rows"]
+        store = query["parameters"].get("store_id", "the selected stores")
+        if "out of stock" in text.lower():
+            if not rows:
+                answer = (
+                    f"No products are marked out of stock in {store} in the inventory snapshot."
+                    if facts["source_record_counts"].get("inventory", 0) > 0
+                    else f"No inventory records are available for {store}, so I cannot "
+                    "determine which products are out of stock there."
+                )
+            else:
+                answer = (
+                    f"There are {len(rows)} products marked out of stock in {store}: "
+                    + "; ".join(f"{row['product_name']} ({row['sku']})" for row in rows)
+                    + "."
+                )
+        elif "most frequent issue" in text.lower() and rows:
+            answer = (
+                f"{rows[0]['category']} is the most frequent issue in {store}, "
+                f"with {rows[0]['tickets']} visible tickets under the selected filters."
+            )
+        elif rows:
+            answer = (
+                f"{store} has {len(rows)} products at or below their reorder points "
+                "in the inventory snapshot."
+            )
+        else:
+            answer = "No products meet the requested condition in the selected inventory snapshot."
+        return {"answer": answer, "referenced_rows": list(range(len(rows)))}
+
     nodes = WorkflowNodes(
         TriageAgent(tracked("triage", triage)),
         RouterAgent(tracked("router", route)),
@@ -130,6 +198,7 @@ def offline_workflow(database):
             ReadOnlySqlExecutor(database),
             datetime.fromisoformat("2026-10-10T12:00:00+05:30"),
             analytics_model=tracked("analytics", analytics),
+            analytics_answer_model=tracked("analytics_answer", analytics_answer),
         ),
     )
     return SimpleNamespace(workflow=RetailWorkflow(nodes), nodes=nodes, calls=calls)

@@ -3,19 +3,19 @@
 Retail issue reporting and ticket analytics, with separate React/Vite and Python/uv/FastAPI codebases.
 The backend connects PII and Safety guardrails, Triage, Router, policy RAG and a shared
 Data/Analytics agent through LangGraph. Chroma holds policy vectors; SQLite holds operational
-source data and durable application records. Docker packaging remains planned.
+source data and durable application records. Docker Compose packages and starts both services.
 
 ## Current state
 
 - Backend: all 16 contracted operations, JWT sessions, private conversations, validated drafts,
   transactional ticket creation, lifecycle events, current-level visibility and dashboard analytics.
-- Frontend: React screens and a Vite API proxy exist; login uses the API with a demo fallback.
-  Copilot and dashboard views still use local mock services and need backend integration.
+- Frontend: React screens call the real backend for login, chat, ticket saving/status, dashboard
+  and analytics. Vite proxies development requests; Nginx proxies the Docker deployment.
 - Operational source: `backend/database/retail.db`, nine tables and 2,970 rows. The removed
   operational CSVs are no longer required. Source queries are read-only.
 - Application state: separate `backend/database/storepilot.db`, initialized by the backend.
-- Verification: **282 backend tests pass** and Ruff passes. Live model answer quality awaits
-  `GROQ_API_KEY`; backend evaluation and container deployment remain unfinished.
+- Verification: **338 backend tests**, six browser fixture journeys and six actual-API browser
+  journeys pass. The backend evaluator runs the 11 public cases and records live model quality separately.
 
 The intended UI has Dashboard with integrated Analytics and a chat Copilot for follow-ups,
 recommended steps and explicit ticket saving. Ticket reads require the creator's current numeric
@@ -30,7 +30,7 @@ backend/app/               FastAPI, storage/services and independent agent modul
 backend/database/          Operational snapshot and writable application database
 backend/scripts/           SQLite verification and Postman collection generation
 backend/knowledge_base/    Policy Markdown sources
-backend/evaluation/        Retained evaluation cases and submission schema
+backend/evaluation/        Public cases, submission schema and backend workflow evaluator
 backend/tests/             Offline workflow, RAG, guardrail, API, auth and contract tests
 docs/                      Product, design, flow, contract and verification documents
 .tools/                    Ignored workstation-local uv executable
@@ -52,6 +52,16 @@ docs/                      Product, design, flow, contract and verification docu
 | [Workflow, endpoints and tests](docs/COPILOT_WORKFLOW_AND_TESTS.md) | Current implementation, all 16 endpoints, verified coverage and limits |
 | [Automated test design](docs/AUTOMATED_TEST_DESIGN.md) | Wider test roadmap, including unfinished evaluation/browser checks |
 | [Data analysis](docs/DATA_ANALYSIS.md) | Findings across the supplied datasets |
+
+## Run with Docker
+
+```powershell
+docker compose up --build
+```
+
+Open <http://localhost:8081>. FastAPI docs are at <http://localhost:8001/docs>.
+See [Docker setup and integration checks](docs/DOCKER_AND_INTEGRATION.md) for configuration,
+persistence, alternate ports and test results. First startup downloads embeddings and builds the index.
 
 ## Run locally
 

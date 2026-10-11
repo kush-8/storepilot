@@ -9,6 +9,7 @@ from app.storage import check_reference, now, source, uid
 
 from .messages import message, sanitize
 from .policies import policies
+from .store_scope import mentions_another_store
 
 
 def escalation(category, priority, review=False, approval=False):
@@ -110,6 +111,13 @@ class CopilotService:
             return finish("Use Dashboard Analytics for authorized ticket counts and breakdowns.")
         # IDs come from validated request context/conversation, never model-invented caller IDs.
         store = context.get("affected_store_id") or conversation["affected_store_id"]
+        if mentions_another_store(clean, store):
+            question = (
+                f"You can only report issues for your assigned store ({store}). "
+                "Please describe the issue there."
+            )
+            turn.update(result_type="clarification", route="Clarify", follow_up_question=question)
+            return finish(question)
         extra = " Context: " + json.dumps(
             {
                 "store_id": store,

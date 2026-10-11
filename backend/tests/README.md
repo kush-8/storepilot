@@ -1,6 +1,6 @@
 # StorePilot backend tests
 
-The current suite has **282 passing cases**. See the
+The current suite has **345 passing cases**. See the
 [workflow, endpoint and verification report](../../docs/COPILOT_WORKFLOW_AND_TESTS.md)
 for all 16 API explanations, suite coverage and remaining work.
 
@@ -39,11 +39,13 @@ seeded observations. Removed operational CSVs are neither required nor reconstru
 ## Cleanup and remaining work
 
 Six obsolete test modules (97 cases) required a superseded orchestrator, normalized fixture tables
-or an evaluation runner that does not exist. They were removed, along with their unused collaborators,
+or an evaluation runner that did not exist at cleanup time. They were removed, along with their unused collaborators,
 SQL fixture and duplicate test catalogues. The useful unique auth/policy tests were migrated,
 and missing persistence/visibility regressions were retained against actual interfaces.
 No skipped or expected-failure cases disguise incomplete runtime features.
 
-Live model quality, backend evaluation, Docker persistence and frontend browser journeys still
-need their own implementation and verification. The evaluation input files and
+The backend now has a [public-case evaluator](../evaluation/README.md), with offline integrity
+checks in `test_evaluation.py`. Live model results are recorded separately from this suite;
+behavior quality still needs inspection. Frontend/browser and
+container verification are documented in [the integration report](../../docs/DOCKER_AND_INTEGRATION.md). The evaluation input files and
 [broader test design](../../docs/AUTOMATED_TEST_DESIGN.md) are retained.

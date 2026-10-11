@@ -48,7 +48,8 @@ secret, development uses a process-local key and restart invalidates all existin
 The API now uses the existing LangGraph workflow: PII -> Safety -> Triage -> Router ->
 RAG/Data/Both -> validated response and draft. Agents remain separated from HTTP and storage.
 RAG uses Chroma with local ONNX embeddings; model stages use the existing Groq configuration.
-The same DataAgent provides operational SQL evidence and dashboard ticket-count analytics.
+The same DataAgent provides operational SQL evidence and broader analytics through LLM-generated
+SELECT queries executed by a separate validated read-only tool.
 
 Configure `GROQ_API_KEY` in `.env` and build the policy index before live model use:
 
@@ -65,16 +66,20 @@ human review, approval and escalation requirements. Tickets save only after empl
 partial evidence and confidence below 0.60 do not produce validated saveable drafts. Saving does
 not notify teams, approve refunds, submit claims, transfer stock or confirm root cause.
 
-Dashboard Analytics calls the same DataAgent with authorized, date-filtered rows from the runtime
-or historical database. Counts are computed over the full matching set before response row limits.
-Only the sanitized question reaches the analytics planning model; private issue text and ticket
-rows do not. Supported groupings are store, category, priority and status. Other questions clarify
-or return unsupported. Current-level visibility and private thread ownership are enforced by API.
+Analytics calls the same DataAgent with authorized, filtered ticket metadata and safely projected
+retail data. It supports ticket rankings/trends and stock, products, vendors, deliveries, returns
+and escalation queries. The LLM plans SQL; the SQL tool executes it and returns actual results.
+Policy questions use RAG. Private ticket text, identities and rows never reach the planner.
+Current-level visibility and private thread ownership are enforced by API.
+See [analytics flow, API and tests](../docs/ANALYTICS_WORKFLOW.md).
 
 See [workflow, endpoint and test report](../docs/COPILOT_WORKFLOW_AND_TESTS.md).
-The full cleaned backend suite passes: **282 tests**. Obsolete orchestration/storage fixtures
+The current backend suite passes: **345 tests**. Obsolete orchestration/storage fixtures
 were removed; authentication and policy checks were migrated to the current runtime.
-Live provider quality, frontend journeys and backend evaluation remain separate work.
+One live Groq/Chroma POS scenario and seven actual-API browser journeys are verified.
+The [backend evaluator](evaluation/README.md) runs all 11 retained public cases through the
+real graph and exports predictions, metrics and failures. Broader provider quality remains
+separate from deterministic regression tests.
 
 ## Postman
 
@@ -106,3 +111,9 @@ Regenerate the Postman artifacts after intentional API contract changes:
 ```powershell
 uv run python scripts/generate_postman.py
 ```
+
+## Docker
+
+From the project root run `docker compose up --build` to start the API and built frontend.
+See [Docker setup and checks](../docs/DOCKER_AND_INTEGRATION.md) for runtime paths, persistent
+volumes, model setup and container verification.

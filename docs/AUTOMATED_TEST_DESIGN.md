@@ -19,7 +19,7 @@ Verify that StorePilot safely turns employee issues into grounded persistent tic
 | Retrieval/model evaluation | Backend CLI + recorded fixtures and separate real-model runs | Chroma relevance, citations, grounded behaviour and public challenge outputs |
 | Deployment smoke | Compose smoke suite when packaging exists | Startup, health, private services, app/vector persistence |
 
-These are the designed layers. Backend agent/workflow/API tests are implemented and run; browser, evaluation and deployment checks are not certified complete. See the current report for exact results.
+These are the designed layers. Backend agent/workflow/API tests and browser integration checks are implemented and run. Evaluation remains planned; deployment results are recorded in the [Docker and integration guide](DOCKER_AND_INTEGRATION.md). See the current report for exact results.
 
 ## 2. Deterministic fixture design
 

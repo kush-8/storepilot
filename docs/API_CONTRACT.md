@@ -1,6 +1,6 @@
 # StorePilot — OpenAPI Summary and Contract Notes
 
-Version: 2.2 | Status: backend workflow/API connected and tests green; frontend/evaluation work remains
+Version: 2.3 | Status: backend/frontend/Docker verified; backend evaluation remains planned
 
 Current implementation and verified coverage: [Copilot workflow and tests](COPILOT_WORKFLOW_AND_TESTS.md). The detailed design below includes planned requirements; the current report distinguishes implemented behavior from remaining work.
 
@@ -9,7 +9,7 @@ Current implementation and verified coverage: [Copilot workflow and tests](COPIL
 
 [backend/openapi.json](../backend/openapi.json) is a machine-readable OpenAPI 3.1.0 contract for the StorePilot backend: **16 operations across 15 paths, with 35 reusable schemas**. It describes requests, responses, JWT protection, validation and errors. FastAPI serves this maintained contract; executable routes live in backend/app/main.py.
 
-All 16 operations are now registered. Copilot uses the guarded agent workflow and Dashboard Analytics uses the same DataAgent. Live model verification awaits GROQ_API_KEY configuration; see the linked report for test results.
+All 16 operations are registered. Copilot uses the guarded agent workflow and Dashboard Analytics uses the same DataAgent. Live model smoke checks pass with configured GROQ_API_KEY; see the linked report for test results.
 
 ## 2. Plain-English endpoint summary
 
@@ -28,7 +28,7 @@ There is no frontend/public evaluation API. RAG/pipeline evaluation remains a ba
 
 ## 3. Login and authorization
 
-POST /api/auth/login accepts employee_id and store_id. The backend verifies their exact employee_master assignment and returns a signed JWT plus role/current level. Example supplied assignment: E0001 / ST008. The affected store of an issue can differ from the login store.
+POST /api/auth/login accepts employee_id and store_id. The backend verifies their exact employee_master assignment and returns a signed JWT plus role/current level. Example supplied assignment: E0001 / ST008. Employees can report issues only for their current assigned store. Conversation/context/draft store mismatches return 403; the reporting store is checked again before ticket commit. Another store ID in chat asks for clarification without authorizing a draft.
 
 Protected requests use Authorization: Bearer <JWT>. Proposed token lifetime is 30 minutes, using HS256 with a backend-only signing key and issuer/audience validation. Check expiry, revocation and current directory assignment; fetch current levels separately. Logout revokes the session; expiry requires login again. No password or refresh-token flow is specified.
 
@@ -54,9 +54,16 @@ Private conversation history is owner-only even when the generated ticket is vis
 
 GET /api/dashboard returns scoped totals and distributions. GET /api/tickets returns the same scoped filtered records with pagination. POST /api/dashboard/analytics accepts a natural-language question, filters, and optional owner-only analytics thread ID, then returns grounded answers or clarification/refusal.
 
-Shared filters: live/historical mode, last24h/last7d/last30d/all window or explicit start/end, store, SKU, status, priority and category. Start/end must be provided together and cannot be combined with a window preset.
+Analytics uses an LLM-generated SELECT and a separate validated read-only SQL tool for available
+retail data and authorized ticket metadata. The frontend displays actual results as readable text;
+policy questions use RAG with citations. See [analytics workflow and tests](ANALYTICS_WORKFLOW.md)
+for enforced scope, query limits and parameter/correction behavior.
+
+Shared filters: live/historical_snapshot/combined mode, last24h/last7d/last30d/all window or explicit start/end, store, SKU, status, priority and category. Start/end must be provided together and cannot be combined with a window preset.
 
 Live mode uses actual server timestamps. Historical snapshot mode uses imported cases and the fixed 10 October 2026 noon IST cutoff. Responses identify the resolved window, current visibility scope and source versions. Analytics rows are capped at 200 and explicitly marked when truncated; aggregate calculations use the full authorized matching set.
+
+Combined mode reads imported cases through that cutoff plus generated application tickets. The frontend's default **Live tickets (Open)** view explicitly sends `combined`, `status=Open`, `window=all`; All tickets removes the status filter. API callers omitting data_mode retain the existing `live` default. See [database and visibility checks](DATABASE_AND_TICKET_VISIBILITY.md).
 
 Creator-only status changes require expected_version and create an audit event. Reopening a closed ticket requires a reason. Viewing peers' tickets is not permission to edit them.
 

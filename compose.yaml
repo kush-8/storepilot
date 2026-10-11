@@ -1,0 +1,51 @@
+name: storepilot
+
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      APP_ENV: production
+      DATABASE_PATH: /app/database/retail.db
+      APPLICATION_DATABASE_PATH: /app/state/storepilot.db
+      RAG_KNOWLEDGE_BASE_PATH: /app/knowledge_base
+      RAG_CHROMA_PATH: /app/cache/chroma
+      RAG_EMBEDDING_CACHE_PATH: /app/cache/embeddings
+      STOREPILOT_INDEX_ON_START: "true"
+    volumes:
+      - application-data:/app/state
+      - rag-cache:/app/cache
+      - ./backend/database/retail.db:/app/database/retail.db:ro
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8001}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=8)"]
+      interval: 20s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+    init: true
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8081}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    init: true
+    restart: unless-stopped
+
+volumes:
+  application-data:
+  rag-cache:

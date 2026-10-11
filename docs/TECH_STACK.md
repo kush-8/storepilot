@@ -1,6 +1,6 @@
 # StorePilot — Technology Stack and Setup
 
-Status: backend agents/API implemented; frontend integration, Docker and evaluation remain planned.
+Status: backend agents/API implemented; frontend integrated and Docker Compose supplied; backend evaluation runner implemented, with live quality results recorded separately.
 
 ## Architecture and dependencies
 
@@ -19,7 +19,7 @@ Two independent codebases share the maintained [OpenAPI contract](../backend/ope
 | HS256 JWT with Python standard library | Exact employee/store login, 30-minute tokens, persisted revocation and directory revalidation |
 | pytest + httpx + JSON Schema/OpenAPI validators | Offline graph, RAG, guards, real API/auth/storage and contract verification |
 | Ruff / Oxlint | Backend and frontend static checks |
-| Docker + Docker Compose | Requested packaging; deployment files are not yet implemented |
+| Docker + Docker Compose | Separate frontend/backend images and root Compose with persistent SQLite/Chroma volumes |
 
 Backend dependencies are declared in `backend/pyproject.toml` and pinned by `backend/uv.lock`.
 Test validators belong to its `dev` group; no separate test requirements file is needed.
@@ -35,7 +35,7 @@ Browser tests have their own package and lockfile under `frontend/tests/`.
 | `backend/database/storepilot.db` | Sessions, structured JSON records for private chats/drafts/tickets/events, retry receipts and rate counters; initialized by the runtime |
 | `backend/.cache/chroma` | Derived policy index; source Markdown remains authoritative |
 | `backend/.cache/embeddings` | Downloaded local ONNX embedding weights |
-| `backend/evaluation/` | Retained evaluation prompts and prediction schema; runner remains outstanding |
+| `backend/evaluation/` | Public prompts, prediction schema and backend-only workflow evaluation runner |
 
 The removed operational CSVs are unnecessary. Verification uses SQLite integrity, foreign keys,
 manifest row counts and seeded observations; it cannot recompute hashes from absent CSV contents.
@@ -81,8 +81,7 @@ npm run lint
 npm run build
 ```
 
-Vite serves port 5173 and proxies `/api` to `127.0.0.1:8000`. Login is connected with a demo
-fallback; other product screens currently use local mock services. The target navigation remains
+Vite serves port 5173 and proxies `/api` to `127.0.0.1:8000`. The active login, Copilot, ticket and dashboard/analytics screens call the real backend. The target navigation remains
 Dashboard (overview plus Analytics) and chat Copilot, with login and ticket detail utilities.
 Evaluation stays in backend tests/CLI. UI implementation uses JavaScript today; TypeScript remains
 a possible frontend migration rather than an installed application requirement.
@@ -92,16 +91,16 @@ That ignored tool folder is not a portable dependency; other machines need their
 
 ## Configuration and deployment plan
 
-Keep provider keys, JWT signing secrets and SQLite files in the backend. Frontend tokens remain
-in memory; request authorization uses current directory levels. Historical data uses the supplied
+Keep provider keys, JWT signing secrets and SQLite files in the backend. The frontend stores
+tokens in local storage when Remember Me is selected and session storage otherwise;
+request authorization uses current directory levels. Historical data uses the supplied
 noon IST anchor on 10 October 2026; live tickets use server UTC timestamps and `(start,end]` filters.
 
-Docker packaging still needs frontend/backend Dockerfiles, `.dockerignore` files and `compose.yaml`.
-Serve built frontend assets through a same-origin `/api` proxy to FastAPI. Mount the operational
-snapshot/policy sources read-only, and persist writable application database/journal files and
-Chroma index separately. Current Chroma is embedded locally; a private Chroma server deployment
-would require an explicit client/configuration change. Provision embeddings and index as deliberate
-setup steps. Container startup must not rebuild source data or erase application tickets.
+Docker packaging uses `frontend/Dockerfile`, `backend/Dockerfile`, per-codebase `.dockerignore`
+files and root `compose.yaml`. Nginx proxies `/api` to FastAPI; SQLite application records and
+local Chroma/embeddings use named volumes. The source snapshot is mounted read-only. Startup
+checks persistent signing configuration and prepares the policy index. Run `docker compose up --build`
+from the root; see [Docker and integration guide](DOCKER_AND_INTEGRATION.md).
 
 See the [current workflow and verification report](COPILOT_WORKFLOW_AND_TESTS.md) for all endpoints,
 test results and live verification limits. Update lockfiles deliberately and rerun relevant checks.

@@ -141,6 +141,59 @@ th,td{padding:14px 12px;
 .message strong{font-size:13px}
 .message p{white-space:pre-wrap;
   margin:8px 0 0}
+.copilot-response{min-width:0}
+.copilot-response-meta{display:flex;
+  flex-wrap:wrap;
+  gap:16px 32px;
+  padding:12px 0;
+  margin:4px 0 12px;
+  border-bottom:1px solid #dbe3ef}
+.copilot-response-meta>div{display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px}
+.copilot-response-meta span,.copilot-data-source>span,.copilot-data-source small{font-size:12px;
+  color:#66758b}
+.message .copilot-response-meta strong{font-size:14px}
+.copilot-response h3{margin:18px 0 8px}
+.copilot-response li{line-height:1.6;
+  margin-bottom:6px}
+.copilot-data-source{display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:6px 12px;
+  margin:18px 0 8px}
+.copilot-data-source h4{margin:0;
+  font-size:14px}
+.copilot-data-source small{flex-basis:100%}
+.copilot-data-scroll{max-width:100%;
+  margin:10px 0;
+  border:1px solid #dbe3ef;
+  border-radius:8px;
+  background:white}
+.copilot-data-table caption{text-align:left;
+  padding:10px 12px;
+  color:#66758b;
+  font-size:12px}
+.copilot-data-table th{white-space:nowrap}
+.copilot-data-table td{min-width:100px;
+  max-width:320px;
+  vertical-align:top}
+.data-missing{color:#66758b}
+.data-fields{margin:0}
+.data-fields>div{display:grid;
+  grid-template-columns:minmax(70px,1fr) minmax(80px,2fr);
+  gap:10px;
+  margin:4px 0}
+.data-fields dt{font-weight:500;
+  color:#66758b}
+.data-fields dd{margin:0}
+.copilot-escalation,.copilot-limitations{padding:12px 16px;
+  border-radius:8px;
+  background:#fff5e5;
+  margin:16px 0}
+.copilot-escalation h3,.copilot-limitations h3{margin:0 0 8px}
+.copilot-escalation p,.copilot-limitations ul{margin:0}
 .draft{border:1px solid #c6d9f7;
   border-radius:9px;
   background:#f6f9ff;
@@ -200,6 +253,8 @@ summary{cursor:pointer}
   margin:0}
 .topbar>button{margin-left:auto}
 .tabs{padding:0 16px}
+.tabs button{padding:9px 10px;
+  font-size:14px}
 .content{padding:24px 16px}
 .panel{padding:18px}
 .metrics{grid-template-columns:repeat(2,1fr);
@@ -211,3 +266,8 @@ summary{cursor:pointer}
 .composer-footer span{font-size:12px}
 .message.user{margin-left:12px}
 }
+
+.analytics-results { padding-left: 1.25rem; overflow-wrap: anywhere; }
+.analytics-results li { margin: .65rem 0; }
+.analytics > [aria-live] > p { white-space: pre-wrap; }
+

@@ -28,6 +28,7 @@ from app.reporting import dashboard_data, detail, query, summary
 from app.services.copilot import CopilotService
 from app.services.messages import message, sanitize
 from app.services.policies import policies
+from app.services.store_scope import mentions_another_store, require_assigned_store
 from app.storage import (
     ROOT,
     check_reference,
@@ -215,11 +216,12 @@ def stores(employee: Employee):
 
 @app.post("/api/conversations", status_code=201)
 def create_conversation(body: ConversationCreate, employee: Employee):
+    store = require_assigned_store(employee, body.affected_store_id)
     check_reference(body.affected_store_id)
     conversation = dict(
         conversation_id=uid(),
         owner_employee_id=employee["employee_id"],
-        affected_store_id=body.affected_store_id or employee["assigned_store_id"],
+        affected_store_id=store,
         created_at=now().isoformat(),
         updated_at=now().isoformat(),
         messages=[],
@@ -260,6 +262,7 @@ def send_message(
     clean, detected = sanitize(body.content)
     # Only sanitized request digests are retained, never raw sensitive content.
     context = body.context.model_dump(exclude_none=True)
+    require_assigned_store(employee, context.get("affected_store_id"))
     if "register_id" in context:
         context["register_id"], context_detected = sanitize(context["register_id"])
         detected = detected or context_detected
@@ -267,6 +270,7 @@ def send_message(
     check_reference(context.get("affected_store_id"), context.get("sku"))
     with state() as db:
         conversation = get_record(db, "conversation", conversation_id, owner)
+        require_assigned_store(employee, conversation["affected_store_id"])
         cached = db.execute(
             "SELECT * FROM turns WHERE conversation_id=? AND client_id=?",
             (str(conversation_id), str(body.client_message_id)),
@@ -277,9 +281,15 @@ def send_message(
             return json.loads(cached["payload"])
         original_version = conversation["updated_at"]
     previous = conversation.get("issue_context", {}).copy()
+    require_assigned_store(employee, previous.get("affected_store_id"))
     previous.update(context)
     # Models run outside the SQLite write transaction. A changed conversation is rejected below.
-    history = [m["content"] for m in conversation["messages"] if m["role"] == "user"]
+    history = [
+        m["content"]
+        for m in conversation["messages"]
+        if m["role"] == "user"
+        and not mentions_another_store(m["content"], employee["assigned_store_id"])
+    ]
     combined = (" ".join(history[-4:]) + " " + clean).strip()[-4000:]
     turn = CopilotService(lambda: workflow).respond(conversation, combined, previous, owner)
     turn["guardrails"]["pii_detected"] = detected or turn["guardrails"]["pii_detected"]
@@ -323,6 +333,7 @@ def send_message(
 def get_draft(draft_id: UUID, employee: Employee):
     with state() as db:
         draft = get_record(db, "draft", draft_id, employee["employee_id"])
+        require_assigned_store(employee, draft["affected_store_id"])
         if datetime.fromisoformat(draft["expires_at"]) <= now():
             draft["generation_allowed"] = False
         return draft
@@ -347,6 +358,7 @@ def create_ticket(
             response.status_code = 200
             return dict(ticket=detail(receipt["ticket_id"], employee, db), idempotent_replay=True)
         draft = get_record(db, "draft", body.draft_id, owner)
+        require_assigned_store(employee, draft["affected_store_id"])
         if (
             not draft["generation_allowed"]
             or draft["revision"] != body.draft_revision
@@ -504,11 +516,11 @@ def analytics(body: AnalyticsRequest, employee: Employee, workflow=Depends(get_w
         )
     else:
         try:
-            result = workflow.data.analyze(question, authorized_tickets=items)
+            result = workflow.data.analyze(question, authorized_tickets=items, context=context)
         except Exception:
             result = AnalyticsResult(
                 status="unavailable",
-                answer="Ticket analytics is unavailable. Check the model configuration.",
+                answer="Analytics is unavailable. Check the model configuration.",
             )
     with state() as db:
         put_record(
@@ -524,27 +536,24 @@ def analytics(body: AnalyticsRequest, employee: Employee, workflow=Depends(get_w
         result_type=result.status,
         answer=result.answer,
         follow_up_question=result.follow_up,
-        intent="ticket_counts" if result.status == "answer" else None,
+        intent=result.intent,
         context=context,
-        columns=[
-            dict(key="label", label=result.group_by, value_type="string"),
-            dict(key="count", label="Tickets", value_type="number"),
-        ],
+        columns=result.columns,
         rows=result.rows[:200],
         total_rows=len(result.rows),
-        truncated=len(result.rows) > 200,
-        query_template_ids=["authorized_ticket_counts"] if result.status == "answer" else [],
-        citations=[],
-        evidence=[],
+        truncated=result.truncated or len(result.rows) > 200,
+        query_template_ids=result.query_template_ids,
+        citations=result.citations,
+        evidence=result.evidence,
         guardrails=dict(
             pii_checked=True,
             pii_detected=pii.pii_detected or result.pii_detected,
             safety_refusal=result.safety_refusal,
             human_review_required=result.status in {"refusal", "unavailable"},
         ),
-        limitations=[
-            "Counts use the selected data mode, dates and current employee levels. "
-            "Ticket creation does not execute an operational action."
+        limitations=result.limitations or [
+            "Results use the selected data mode, dates and current employee levels. "
+            "Analytics is read-only."
         ],
     )
 

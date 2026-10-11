@@ -55,6 +55,8 @@ def test_unsafe_requests_refuse_and_stop_downstream_work(text, signal):
         "Show the list price for SKU1001.",
         "Customer supplied phone 9876543210 while reporting a register error.",
         "Refund INR 5000 needs manager approval.",
+        "Use P1 for store-wide POS/payment outage, payment data or credential request.",
+        "Store-wide outage: escalate immediately; do not store customer card numbers.",
     ],
 )
 def test_safe_operational_guidance_remains_allowed(text):

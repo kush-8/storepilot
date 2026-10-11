@@ -23,19 +23,37 @@ The browser package has its own lockfile, separate from the frontend application
 
 | Journey | Actions | Required result |
 | --- | --- | --- |
-| Dashboard and Copilot navigation | Log in; inspect brand, scope and navigation | StorePilot brand; Analytics question box within Dashboard; no Overview/Analytics/Evaluation destinations; protected requests send bearer token |
+| Dashboard, Copilot and Analytics/Query navigation | Log in; inspect brand, scope and navigation; open Analytics/Query | Three tabs; ticket overview on Dashboard; query box only on Analytics/Query; no Tickets destination; protected requests send bearer token |
 | Follow-up → recommendation → save | Report ambiguous reader issue; answer all-register impact; inspect steps; Generate ticket; return to Dashboard | Clarification precedes draft, escalation step visible, one save, committed receipt ID and ticket row |
 | Failed save and retry | Make first save return 503; click Retry | No premature receipt, draft retained, second attempt reuses the same nonempty idempotency key |
-| Dashboard Analytics | Ask for unresolved tickets by store | Grounded table/answer visible; zero ticket-generation requests |
+| Analytics/Query | Select filters; ask for unresolved tickets by store; change filters | Selected filters sent; grounded table/answer visible; stale results cleared; zero ticket-generation requests |
 | Logout privacy | Start a private chat; log out | Login controls restored, previous message removed, fixture bearer token absent from local/session storage |
 | Mobile and keyboard | Set viewport to 360×800; log in; focus chat composer | Accessible labelled controls, visible focused composer and no horizontal overflow |
+| Structured Copilot response | Ask for inventory; inspect classification, policy steps, rows and preview limits; send a follow-up | Category and priority precede guidance, JSON becomes tables, zero/null remain distinct, classification survives follow-up |
+| Query parsing on mobile | Return fenced/nested JSON, empty results and incomplete JSON at 360×800 | Values remain safe text, nested data is readable, empty results are explicit, incomplete data stays visible, no page overflow |
 
 The UI selectors establish accessible names: Employee ID, Store ID, Dashboard, Copilot, Message, Send and Generate ticket. Each browser test uses a fresh HTTP fixture/session. Real API tests in backend/tests prove storage and scope independently; these UI journeys prove client behaviour with known responses.
 
-## Historical red baseline
+## Current verification
 
-All **6 tests collected and executed; 6 failed, 0 skipped** against the starter Vite scaffold. Each reached the page but timed out waiting for the Employee ID login control, which has not been implemented. Edge and Vite launched successfully; no browser startup errors occurred. The baseline used a 6-second test timeout (`npm test -- --timeout=6000`); normal configured timeout is 20 seconds. Passing test collection is not a passing journey.
+All eight fixture-based browser journeys pass against the integrated frontend. The previous red
+baseline predates the current login/screens and no longer represents the application.
 
-That run predates the current login/screens; it does not describe the present UI. Browser journeys have not been reverified during backend cleanup. Follow-up/save/retry/logout assertions will be exercised progressively during TDD. Frontend Copilot and dashboard still use mock services and await integration.
+Run the actual React-to-FastAPI integration suite:
 
-See [full app/API flow](../../docs/COPILOT_WORKFLOW_AND_TESTS.md) and [backend test guide](../../backend/tests/README.md).
+```powershell
+npm run test:integration
+npm run typecheck
+```
+
+Its seven tests cover private clarification/citations, ticket save/dashboard/analytics/status/logout,
+historical data and PII refusal, replay after a committed ticket's HTTP reply is lost, and private
+analytics clarification threads, existing Open-case visibility and persistence after reload/status changes,
+assigned-store reporting with a recoverable cross-store clarification, and broad SQL analytics
+shown as readable result text. The fixture starts a real backend at port 18000 and Vite at 15173,
+with a temporary application database. The graph, JWT, SQL and storage are real; model adapters and
+retrieval are deterministic. It needs the backend virtual environment installed first.
+
+See [Docker/integration results](../../docs/DOCKER_AND_INTEGRATION.md),
+[full app/API flow](../../docs/COPILOT_WORKFLOW_AND_TESTS.md) and
+[backend test guide](../../backend/tests/README.md).
